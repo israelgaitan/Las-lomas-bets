@@ -15,7 +15,48 @@
 
   const app = document.getElementById("app");
 
+  // Al enfocar cualquier input numérico, seleccionamos su contenido completo.
+  // Así, si el valor es "0" y empiezas a escribir, se reemplaza en vez de
+  // quedar pegado como prefijo ("01500" en vez de "1500").
+  app.addEventListener("focusin", (e) => {
+    if (e.target.tagName === "INPUT" && e.target.type === "number") {
+      e.target.select();
+    }
+  });
+
+  function captureFocus() {
+    const activeEl = document.activeElement;
+    if (!activeEl || !(activeEl.tagName === "INPUT" || activeEl.tagName === "SELECT")) return null;
+    // Construimos un selector simple: data-role + posición entre elementos con el mismo data-role
+    const role = activeEl.getAttribute("data-role");
+    if (!role) return null;
+    const sameRole = Array.from(document.querySelectorAll(`[data-role="${role}"]`));
+    const index = sameRole.indexOf(activeEl);
+    return {
+      role,
+      index,
+      selectionStart: activeEl.selectionStart,
+      selectionEnd: activeEl.selectionEnd,
+    };
+  }
+
+  function restoreFocus(captured) {
+    if (!captured) return;
+    const sameRole = Array.from(document.querySelectorAll(`[data-role="${captured.role}"]`));
+    const target = sameRole[captured.index];
+    if (!target) return;
+    target.focus();
+    if (typeof captured.selectionStart === "number" && target.setSelectionRange) {
+      try {
+        target.setSelectionRange(captured.selectionStart, captured.selectionEnd);
+      } catch (e) {
+        // algunos tipos de input (number) no soportan setSelectionRange en todos los navegadores
+      }
+    }
+  }
+
   function render() {
+    const focusState = captureFocus();
     app.innerHTML = "";
 
     // Header
@@ -73,6 +114,8 @@
       tabBar.appendChild(btn);
     });
     app.appendChild(tabBar);
+
+    restoreFocus(focusState);
   }
 
   function onChange(newState, opts) {

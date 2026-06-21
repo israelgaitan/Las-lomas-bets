@@ -106,9 +106,28 @@ function golpeNeto(brutos, ventajas, playerId, holeIdx) {
    ---------------------------------------------------------- */
 
 /**
- * @param {Object} match - {a, b, monto} (monto = $ por hoyo ganado)
+ * @param {Object} match - {a, b, montoIda, montoVuelta}
+ *   montoIda = $ por hoyo ganado en hoyos 1-9
+ *   montoVuelta = $ por hoyo ganado en hoyos 10-18
  * @returns {Object} detalle hoyo a hoyo + saldo neto total del partido
  */
+/**
+ * Genera todos los enfrentamientos posibles (round-robin) entre una lista
+ * de jugadores participantes. Cada partido nuevo arranca en $0, editable
+ * después uno por uno.
+ * @param {Array<number>} participantIds
+ * @returns {Array} lista de {a, b, montoIda:0, montoVuelta:0}
+ */
+function generarTodosVsTodos(participantIds) {
+  const matches = [];
+  for (let i = 0; i < participantIds.length; i++) {
+    for (let j = i + 1; j < participantIds.length; j++) {
+      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0 });
+    }
+  }
+  return matches;
+}
+
 function calcIndividual(match, brutos, ventajas) {
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
@@ -123,14 +142,16 @@ function calcIndividual(match, brutos, ventajas) {
       continue;
     }
 
+    const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
+
     holesCounted++;
     let ganadorHoyo = null;
     if (na < nb) {
       ganadorHoyo = match.a;
-      saldoA += match.monto;
+      saldoA += montoHoyo;
     } else if (nb < na) {
       ganadorHoyo = match.b;
-      saldoA -= match.monto;
+      saldoA -= montoHoyo;
     }
     // empate: no se paga nada, no se acumula
 
@@ -140,6 +161,7 @@ function calcIndividual(match, brutos, ventajas) {
       netoA: na,
       netoB: nb,
       ganadorHoyo,
+      montoHoyo,
     });
   }
 
@@ -227,20 +249,26 @@ function calcForusomeCross(cross, brutos, ventajasCruce) {
 }
 
 /* ----------------------------------------------------------
-   3. SKINS (individual, golpe neto más bajo, empate de 2 reparte,
-      empate de 3+ acumula)
+   3. SKINS (individual, golpe neto más bajo)
+   El monto vigente (base del hoyo + acumulado por empates de 3+) se
+   cobra POR JUGADOR, no es un bote fijo total:
+   - 1 gana: cobra el monto vigente a CADA UNO de los demás.
+   - 2 empatan: cada uno cobra el monto vigente a cada uno de los que
+     NO ganaron, y ese total se reparte entre los 2 ganadores.
+   - 3+ empatan: nadie cobra, el monto se acumula (se suma al monto
+     base del siguiente hoyo).
    ---------------------------------------------------------- */
 
 /**
- * Calcula los skins ganados por cada jugador a través de los 18 hoyos.
- * @returns {Object} { porHoyo: [...], totalesPorJugador: {id: monto}, acumuladoPendiente }
+ * Calcula los skins ganados/perdidos por cada jugador a través de los 18 hoyos.
+ * @returns {Object} { porHoyo: [...], totalesPorJugador: {id: monto neto}, montoPendiente }
  */
 function calcSkins(players, brutos, ventajas, montoPorHoyo) {
   const porHoyo = [];
   const totalesPorJugador = {};
   players.forEach((p) => (totalesPorJugador[p.id] = 0));
 
-  let bote = 0; // acumulado por empates de 3+
+  let acumulado = 0; // extra acumulado por empates de 3+, se suma al monto base del siguiente hoyo
 
   for (let h = 0; h < 18; h++) {
     const netos = players
@@ -252,35 +280,34 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo) {
       continue;
     }
 
+    const montoVigente = montoPorHoyo + acumulado;
     const minNeto = Math.min(...netos.map((x) => x.neto));
     const ganadores = netos.filter((x) => x.neto === minNeto).map((x) => x.id);
+    const perdedores = players.map((p) => p.id).filter((id) => !ganadores.includes(id));
 
-    bote += montoPorHoyo;
+    let entry = { hole: h + 1, jugado: true, ganadores, montoVigente, acumulaSiguiente: false };
 
-    let entry = { hole: h + 1, jugado: true, ganadores, monto: 0, acumulaSiguiente: false };
+    if (ganadores.length === 1 || ganadores.length === 2) {
+      // cada perdedor paga montoVigente UNA VEZ; ese total se reparte
+      // entre los ganadores (si hay 1, se lo lleva todo; si hay 2, a la mitad)
+      const totalCobrado = montoVigente * perdedores.length;
+      const repartoPorGanador = totalCobrado / ganadores.length;
 
-    if (ganadores.length === 1) {
-      // 1 gana todo el bote acumulado
-      totalesPorJugador[ganadores[0]] += bote;
-      entry.monto = bote;
-      bote = 0;
-    } else if (ganadores.length === 2) {
-      // se reparten el bote entre ellos
-      const reparto = bote / 2;
-      ganadores.forEach((id) => (totalesPorJugador[id] += reparto));
-      entry.monto = bote;
-      entry.repartoCadaUno = reparto;
-      bote = 0;
+      ganadores.forEach((id) => (totalesPorJugador[id] += repartoPorGanador));
+      perdedores.forEach((id) => (totalesPorJugador[id] -= montoVigente));
+
+      entry.montoCadaGanador = repartoPorGanador;
+      acumulado = 0;
     } else {
-      // 3+ empatan: nadie gana, se acumula
+      // 3+ empatan: nadie cobra, se acumula para el siguiente hoyo
       entry.acumulaSiguiente = true;
-      entry.boteAcumulado = bote;
+      acumulado = montoVigente;
     }
 
     porHoyo.push(entry);
   }
 
-  return { porHoyo, totalesPorJugador, botePendiente: bote };
+  return { porHoyo, totalesPorJugador, montoPendiente: acumulado };
 }
 
 /* ----------------------------------------------------------
@@ -466,16 +493,12 @@ function calcResumenGeneral(state) {
     r.rival.forEach((id) => (balances[id] += perRival));
   });
 
-  // Skins
+  // Skins (totalesPorJugador ya es el balance neto: positivo gana, negativo paga)
   const skinsResult = bets.skins.enabled
     ? calcSkins(players, scores, ventajas, bets.skins.montoPorHoyo)
-    : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), botePendiente: 0 };
-  const totalSkinsBote = Object.values(skinsResult.totalesPorJugador).reduce((a, b) => a + b, 0);
+    : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
   players.forEach((p) => {
-    const ganado = skinsResult.totalesPorJugador[p.id];
-    // cada jugador pone su parte proporcional del bote total jugado, recibe lo que ganó
-    const aportePromedio = (totalSkinsBote) / players.length;
-    balances[p.id] += ganado - aportePromedio;
+    balances[p.id] += skinsResult.totalesPorJugador[p.id];
   });
 
   // Unidades (birdie, águila, hoyo en uno, sandy, oyes)

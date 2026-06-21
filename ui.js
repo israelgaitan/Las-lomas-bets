@@ -78,7 +78,7 @@ function renderConfigScreen(state, onChange) {
     onChange(state);
   });
   wrap.appendChild(courseCard);
-  const esDatoReal = course.id === "lomas";
+  const esDatoReal = course.id === "lomas" || course.id === "atlas";
   const avisoTexto = esDatoReal
     ? `${course.name} ya tiene par y hándicap por hoyo 100% reales, de la tarjeta oficial del club.`
     : `${course.name} todavía tiene una plantilla genérica de par y hándicap por hoyo. Ajústala abajo con su tarjeta oficial la primera vez que juegues ahí, para que los golpes de ventaja salgan correctos.`;
@@ -173,25 +173,30 @@ function renderConfigScreen(state, onChange) {
   betsCard.querySelector('[data-role="fs-baja"]').addEventListener("input", (e) => {
     const v = parseFloat(e.target.value) || 0;
     state.bets.foursome.crosses.forEach((c) => (c.montoBaja = v));
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  betsCard.querySelector('[data-role="fs-baja"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="fs-alta"]').addEventListener("input", (e) => {
     const v = parseFloat(e.target.value) || 0;
     state.bets.foursome.crosses.forEach((c) => (c.montoAlta = v));
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  betsCard.querySelector('[data-role="fs-alta"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="skins"]').addEventListener("input", (e) => {
     state.bets.skins.montoPorHoyo = parseFloat(e.target.value) || 0;
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  betsCard.querySelector('[data-role="skins"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="unidades"]').addEventListener("input", (e) => {
     state.bets.unidades.monto = parseFloat(e.target.value) || 0;
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  betsCard.querySelector('[data-role="unidades"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="loba"]').addEventListener("input", (e) => {
     state.bets.loba.monto = parseFloat(e.target.value) || 0;
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  betsCard.querySelector('[data-role="loba"]').addEventListener("change", () => onChange(state));
   wrap.appendChild(betsCard);
 
   /* ---- PAR Y STROKE INDEX DE LA CANCHA ACTIVA ---- */
@@ -418,24 +423,86 @@ function renderBetsScreen(state, onChange) {
   /* ---- INDIVIDUALES ---- */
   if (state.bets.individuales.enabled) {
   wrap.appendChild(el(`<h2 class="screen-title">Individuales (1v1, por hoyo)</h2>`));
+
+  const participantesCard = el(`<div class="card"></div>`);
+  participantesCard.appendChild(el(`<p class="card__subtitle" style="margin-bottom:8px">¿Quién juega individuales hoy?</p>`));
+  state.players.forEach((p) => {
+    const checked = state.bets.individuales.participantes.includes(p.id);
+    const row = el(`
+      <div class="checkbox-row">
+        <input type="checkbox" ${checked ? "checked" : ""} data-player-id="${p.id}" />
+        <span>${p.name}</span>
+      </div>
+    `);
+    row.querySelector("input").addEventListener("change", (e) => {
+      const list = state.bets.individuales.participantes;
+      if (e.target.checked) {
+        if (!list.includes(p.id)) list.push(p.id);
+      } else {
+        const i = list.indexOf(p.id);
+        if (i >= 0) list.splice(i, 1);
+      }
+      onChange(state);
+    });
+    participantesCard.appendChild(row);
+  });
+  const genBtn = el(`<button class="btn btn-primary btn-small" style="width:100%;margin-top:10px">Generar todos vs todos</button>`);
+  genBtn.addEventListener("click", () => {
+    const participantes = state.bets.individuales.participantes;
+    if (participantes.length < 2) {
+      alert("Selecciona al menos 2 jugadores para generar enfrentamientos.");
+      return;
+    }
+    const ok = confirm(`Esto reemplaza los partidos actuales con todos los enfrentamientos entre ${participantes.length} jugadores (${(participantes.length * (participantes.length - 1)) / 2} partidos, en $0 c/u). ¿Continuar?`);
+    if (!ok) return;
+    state.bets.individuales.matches = generarTodosVsTodos(participantes);
+    onChange(state);
+  });
+  participantesCard.appendChild(genBtn);
+  wrap.appendChild(participantesCard);
+
   const indCard = el(`<div class="card"></div>`);
 
   if (state.bets.individuales.matches.length === 0) {
-    indCard.appendChild(el(`<p class="help-text">Aún no hay partidos 1v1. Agrega uno abajo.</p>`));
+    indCard.appendChild(el(`<p class="help-text">Aún no hay partidos 1v1. Genera todos vs todos arriba, o agrega uno manualmente abajo.</p>`));
   }
 
   resumen.individualesResults.forEach((r, idx) => {
-    const row = el(`
-      <div class="match-row">
-        <span class="match-row__names">${playerName(state, r.a)}<span class="match-row__vs">vs</span>${playerName(state, r.b)}</span>
-        <span class="match-row__amount ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
+    const match = state.bets.individuales.matches[idx];
+    const matchBlock = el(`
+      <div style="margin-bottom:14px;border-bottom:1px solid var(--linea);padding-bottom:12px">
+        <div class="match-row" style="border-bottom:none;padding-bottom:6px">
+          <span class="match-row__names">${playerName(state, r.a)}<span class="match-row__vs">vs</span>${playerName(state, r.b)}</span>
+          <span class="match-row__amount ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
+        </div>
+        <div class="field-row">
+          <div class="field" style="margin-bottom:6px">
+            <label>$/hoyo ida (1-9)</label>
+            <input type="number" value="${match.montoIda}" data-role="match-ida" />
+          </div>
+          <div class="field" style="margin-bottom:6px">
+            <label>$/hoyo vuelta (10-18)</label>
+            <input type="number" value="${match.montoVuelta}" data-role="match-vuelta" />
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-small" data-role="match-delete" style="width:100%">Eliminar partido</button>
       </div>
     `);
-    row.addEventListener("click", () => {
+    matchBlock.querySelector('[data-role="match-ida"]').addEventListener("input", (e) => {
+      match.montoIda = parseFloat(e.target.value) || 0;
+      onChange(state, { skipRender: true });
+    });
+    matchBlock.querySelector('[data-role="match-ida"]').addEventListener("change", () => onChange(state));
+    matchBlock.querySelector('[data-role="match-vuelta"]').addEventListener("input", (e) => {
+      match.montoVuelta = parseFloat(e.target.value) || 0;
+      onChange(state, { skipRender: true });
+    });
+    matchBlock.querySelector('[data-role="match-vuelta"]').addEventListener("change", () => onChange(state));
+    matchBlock.querySelector('[data-role="match-delete"]').addEventListener("click", () => {
       state.bets.individuales.matches.splice(idx, 1);
       onChange(state);
     });
-    indCard.appendChild(row);
+    indCard.appendChild(matchBlock);
   });
 
   const addMatchRow = el(`
@@ -447,7 +514,10 @@ function renderBetsScreen(state, onChange) {
         <select data-role="b" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
           ${state.players.map((p) => `<option value="${p.id}">${p.name}</option>`).join("")}
         </select>
-        <input data-role="monto" type="number" placeholder="$/hoyo" style="width:80px;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input data-role="monto-ida" type="number" placeholder="$/hoyo ida" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
+        <input data-role="monto-vuelta" type="number" placeholder="$/hoyo vuelta" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
       </div>
       <button class="btn btn-ghost btn-small" data-role="add" style="margin-top:10px;width:100%">+ Agregar partido</button>
     </div>
@@ -456,13 +526,13 @@ function renderBetsScreen(state, onChange) {
   addMatchRow.querySelector('[data-role="add"]').addEventListener("click", () => {
     const a = parseInt(addMatchRow.querySelector('[data-role="a"]').value);
     const b = parseInt(addMatchRow.querySelector('[data-role="b"]').value);
-    const monto = parseFloat(addMatchRow.querySelector('[data-role="monto"]').value) || 0;
+    const montoIda = parseFloat(addMatchRow.querySelector('[data-role="monto-ida"]').value) || 0;
+    const montoVuelta = parseFloat(addMatchRow.querySelector('[data-role="monto-vuelta"]').value) || 0;
     if (a === b) return;
-    state.bets.individuales.matches.push({ a, b, monto });
+    state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta });
     onChange(state);
   });
   wrap.appendChild(indCard);
-  wrap.appendChild(el(`<p class="help-text">Toca un partido para eliminarlo.</p>`));
   }
 
   /* ---- FOURSOME ---- */
@@ -494,12 +564,14 @@ function renderBetsScreen(state, onChange) {
     `);
     card.querySelector('[data-role="baja"]').addEventListener("input", (e) => {
       cross.montoBaja = parseFloat(e.target.value) || 0;
-      onChange(state);
+      onChange(state, { skipRender: true });
     });
+    card.querySelector('[data-role="baja"]').addEventListener("change", () => onChange(state));
     card.querySelector('[data-role="alta"]').addEventListener("input", (e) => {
       cross.montoAlta = parseFloat(e.target.value) || 0;
-      onChange(state);
+      onChange(state, { skipRender: true });
     });
+    card.querySelector('[data-role="alta"]').addEventListener("change", () => onChange(state));
     wrap.appendChild(card);
   });
   }
@@ -517,8 +589,9 @@ function renderBetsScreen(state, onChange) {
   `);
   skinsCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
     state.bets.skins.montoPorHoyo = parseFloat(e.target.value) || 0;
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  skinsCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
   state.players.forEach((p) => {
     const ganado = resumen.skinsResult.totalesPorJugador[p.id];
     skinsCard.appendChild(el(`
@@ -528,8 +601,8 @@ function renderBetsScreen(state, onChange) {
       </div>
     `));
   });
-  if (resumen.skinsResult.botePendiente > 0) {
-    skinsCard.appendChild(el(`<p class="help-text">Bote acumulado pendiente (empate de 3+): ${fmtMoney(resumen.skinsResult.botePendiente)}</p>`));
+  if (resumen.skinsResult.montoPendiente > 0) {
+    skinsCard.appendChild(el(`<p class="help-text">Monto acumulado pendiente (empate de 3+, se suma al próximo hoyo): ${fmtMoney(resumen.skinsResult.montoPendiente)}</p>`));
   }
   wrap.appendChild(skinsCard);
   }
@@ -548,8 +621,9 @@ function renderBetsScreen(state, onChange) {
   `);
   uniCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
     state.bets.unidades.monto = parseFloat(e.target.value) || 0;
-    onChange(state);
+    onChange(state, { skipRender: true });
   });
+  uniCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
   if (resumen.unidadesResult.detalle.length === 0) {
     uniCard.appendChild(el(`<p class="help-text">Sin eventos registrados todavía.</p>`));
   } else {
@@ -578,8 +652,9 @@ function renderBetsScreen(state, onChange) {
     `);
     lobaCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
       state.bets.loba.monto = parseFloat(e.target.value) || 0;
-      onChange(state);
+      onChange(state, { skipRender: true });
     });
+    lobaCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
     state.players.forEach((p) => {
       const ganado = resumen.lobaResult.balances[p.id];
       lobaCard.appendChild(el(`
@@ -659,8 +734,7 @@ function renderSummaryScreen(state, onChange) {
       if (r.rival.includes(p.id)) return sum - r.saldoTotal / 2;
       return sum;
     }, 0);
-    const totalSkinsBote = Object.values(resumen.skinsResult.totalesPorJugador).reduce((a, b) => a + b, 0);
-    const sk = resumen.skinsResult.totalesPorJugador[p.id] - totalSkinsBote / state.players.length;
+    const sk = resumen.skinsResult.totalesPorJugador[p.id];
     const uni = resumen.unidadesResult.balances[p.id];
     const lob = resumen.lobaResult.balances[p.id];
 

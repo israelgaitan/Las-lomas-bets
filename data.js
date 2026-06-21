@@ -19,6 +19,11 @@ const LAS_LOMAS_PAR = [4, 3, 4, 5, 4, 3, 4, 4, 4, 4, 5, 3, 4, 4, 4, 4, 3, 5];
 // de la tarjeta oficial del club). 1 = hoyo más difícil, 18 = más fácil.
 const LAS_LOMAS_STROKE_INDEX = [11, 13, 15, 5, 7, 17, 1, 9, 3, 4, 8, 14, 16, 10, 2, 6, 12, 18];
 
+// Par y ventaja REALES de Atlas Country Club (tarjeta oficial del club).
+// Par total 72.
+const ATLAS_PAR = [5, 4, 4, 3, 4, 4, 3, 5, 4, 5, 4, 4, 4, 3, 5, 4, 3, 4];
+const ATLAS_STROKE_INDEX = [17, 9, 1, 15, 3, 13, 11, 7, 5, 12, 4, 6, 10, 14, 18, 2, 16, 8];
+
 // Canchas precargadas. El stroke index sigue siendo una PLANTILLA genérica:
 // el usuario debe ajustarlo con la tarjeta oficial del club (la fila de
 // "Hcp" o "Handicap" por hoyo) la primera vez que juegue ahí, desde Config.
@@ -33,8 +38,8 @@ function defaultCourses() {
     {
       id: "atlas",
       name: "Atlas CC",
-      par: [...DEFAULT_PAR],
-      strokeIndex: [...DEFAULT_STROKE_INDEX],
+      par: [...ATLAS_PAR],
+      strokeIndex: [...ATLAS_STROKE_INDEX],
     },
     {
       id: "canadas",
@@ -109,7 +114,10 @@ function newState() {
     bets: {
       individuales: {
         enabled: true,
-        // pares 1v1: lista de {a, b, monto} — monto = $ por HOYO ganado
+        // ids de jugadores que participan en individuales hoy (para generar
+        // automáticamente todos los enfrentamientos entre ellos)
+        participantes: [1, 2, 3, 4, 5],
+        // pares 1v1: lista de {a, b, montoIda, montoVuelta}
         matches: [],
       },
       foursome: {
@@ -170,6 +178,17 @@ function migrateState(state) {
     state.oyes = {};
     state.players.forEach((p) => (state.oyes[p.id] = emptySandyFlags()));
   }
+  if (!state.bets.individuales.participantes) {
+    state.bets.individuales.participantes = state.players.map((p) => p.id);
+  }
+  // migrar partidos viejos que tenían un solo campo "monto" en vez de ida/vuelta
+  state.bets.individuales.matches.forEach((m) => {
+    if (m.montoIda === undefined) {
+      m.montoIda = m.monto || 0;
+      m.montoVuelta = m.monto || 0;
+      delete m.monto;
+    }
+  });
   return state;
 }
 
