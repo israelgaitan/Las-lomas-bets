@@ -1,0 +1,187 @@
+/* ============================================================
+   LAS LOMAS BETS — data.js
+   Estado central de la app y configuración por defecto.
+   ============================================================ */
+
+const STORAGE_KEY = "lasLomasBets_v1";
+
+// Stroke index genérico por defecto (dificultad 1=más difícil .. 18=más fácil)
+const DEFAULT_STROKE_INDEX = [5, 1, 13, 9, 3, 15, 7, 17, 11, 6, 2, 14, 10, 4, 16, 8, 18, 12];
+
+// Par genérico por defecto de cada hoyo (plantilla editable, par 72 total)
+const DEFAULT_PAR = [4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 4, 3, 5, 4, 4, 3, 4, 5];
+
+// Par REAL de Las Lomas Club de Golf (Zapopan), confirmado con la tarjeta
+// de resultados del usuario (TheGrint, salida Blancas, par total 71).
+const LAS_LOMAS_PAR = [4, 3, 4, 5, 4, 3, 4, 4, 4, 4, 5, 3, 4, 4, 4, 4, 3, 5];
+
+// Hándicap/ventaja por hoyo REAL de Las Lomas (fila "Ventajas Caballeros"
+// de la tarjeta oficial del club). 1 = hoyo más difícil, 18 = más fácil.
+const LAS_LOMAS_STROKE_INDEX = [11, 13, 15, 5, 7, 17, 1, 9, 3, 4, 8, 14, 16, 10, 2, 6, 12, 18];
+
+// Canchas precargadas. El stroke index sigue siendo una PLANTILLA genérica:
+// el usuario debe ajustarlo con la tarjeta oficial del club (la fila de
+// "Hcp" o "Handicap" por hoyo) la primera vez que juegue ahí, desde Config.
+function defaultCourses() {
+  return [
+    {
+      id: "lomas",
+      name: "Las Lomas",
+      par: [...LAS_LOMAS_PAR],
+      strokeIndex: [...LAS_LOMAS_STROKE_INDEX],
+    },
+    {
+      id: "atlas",
+      name: "Atlas CC",
+      par: [...DEFAULT_PAR],
+      strokeIndex: [...DEFAULT_STROKE_INDEX],
+    },
+    {
+      id: "canadas",
+      name: "Las Cañadas CC",
+      par: [...DEFAULT_PAR],
+      strokeIndex: [...DEFAULT_STROKE_INDEX],
+    },
+  ];
+}
+
+function defaultPlayer(id, name) {
+  return { id, name, hcp: 0 };
+}
+
+function emptyHoleScores() {
+  // 18 posiciones, null = no jugado aún
+  return new Array(18).fill(null);
+}
+
+function emptySandyFlags() {
+  // 18 posiciones, true = el jugador hizo el evento en ese hoyo
+  return new Array(18).fill(false);
+}
+
+function emptyLobaHoyo() {
+  // por hoyo: { loba: playerId|null, companero: playerId|null }
+  return new Array(18).fill(null).map(() => ({ loba: null, companero: null }));
+}
+
+function newState() {
+  const courses = defaultCourses();
+  return {
+    courses,
+    round: {
+      courseId: courses[0].id,
+      currentHole: 1,
+    },
+    unit: 1000, // valor de la unidad de apuesta, en la moneda que sea
+    players: [
+      defaultPlayer(1, "Jugador 1"),
+      defaultPlayer(2, "Jugador 2"),
+      defaultPlayer(3, "Jugador 3"),
+      defaultPlayer(4, "Jugador 4"),
+      defaultPlayer(5, "Jugador 5"),
+    ],
+    // golpes brutos por jugador por hoyo: { [playerId]: [18 valores] }
+    scores: {
+      1: emptyHoleScores(),
+      2: emptyHoleScores(),
+      3: emptyHoleScores(),
+      4: emptyHoleScores(),
+      5: emptyHoleScores(),
+    },
+    // sandy marcado manualmente: { [playerId]: [18 booleanos] }
+    sandies: {
+      1: emptySandyFlags(),
+      2: emptySandyFlags(),
+      3: emptySandyFlags(),
+      4: emptySandyFlags(),
+      5: emptySandyFlags(),
+    },
+    // oyes marcado manualmente (solo aplica en hoyos par 3): { [playerId]: [18 booleanos] }
+    oyes: {
+      1: emptySandyFlags(),
+      2: emptySandyFlags(),
+      3: emptySandyFlags(),
+      4: emptySandyFlags(),
+      5: emptySandyFlags(),
+    },
+    // loba: por hoyo, quién es loba y a quién elige de compañero
+    loba: emptyLobaHoyo(),
+    bets: {
+      individuales: {
+        enabled: true,
+        // pares 1v1: lista de {a, b, monto} — monto = $ por HOYO ganado
+        matches: [],
+      },
+      foursome: {
+        enabled: true,
+        // 3 cruces fijos: 1+2 vs 3+4 / 1+2 vs 3+5 / 1+2 vs 4+5
+        crosses: [
+          { id: "A", base: [1, 2], rival: [3, 4], montoAlta: 0, montoBaja: 0 },
+          { id: "B", base: [1, 2], rival: [3, 5], montoAlta: 0, montoBaja: 0 },
+          { id: "C", base: [1, 2], rival: [4, 5], montoAlta: 0, montoBaja: 0 },
+        ],
+      },
+      skins: {
+        enabled: true,
+        montoPorHoyo: 0,
+      },
+      unidades: {
+        enabled: true,
+        // mismo monto fijo para birdie, águila, hoyo en uno, sandy y oyes
+        monto: 0,
+      },
+      loba: {
+        enabled: true,
+        // monto base por jugador (como el "$100" del ejemplo)
+        monto: 0,
+      },
+    },
+  };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return newState();
+    const parsed = JSON.parse(raw);
+    return migrateState(parsed);
+  } catch (e) {
+    console.error("Error cargando estado:", e);
+    return newState();
+  }
+}
+
+// Compatibilidad con guardados de versiones anteriores (antes de multi-cancha/loba)
+function migrateState(state) {
+  if (!state.courses) {
+    const courses = defaultCourses();
+    const oldRound = state.round || {};
+    courses[0].par = oldRound.par || [...DEFAULT_PAR];
+    courses[0].strokeIndex = oldRound.strokeIndex || [...DEFAULT_STROKE_INDEX];
+    state.courses = courses;
+    state.round = {
+      courseId: courses[0].id,
+      currentHole: oldRound.currentHole || 1,
+    };
+  }
+  if (!state.loba) state.loba = emptyLobaHoyo();
+  if (!state.bets.loba) state.bets.loba = { enabled: true, monto: 0 };
+  if (!state.oyes) {
+    state.oyes = {};
+    state.players.forEach((p) => (state.oyes[p.id] = emptySandyFlags()));
+  }
+  return state;
+}
+
+function saveState(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error("Error guardando estado:", e);
+  }
+}
+
+function getActiveCourse(state) {
+  return state.courses.find((c) => c.id === state.round.courseId) || state.courses[0];
+}
+
