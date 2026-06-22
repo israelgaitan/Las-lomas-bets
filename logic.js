@@ -20,26 +20,43 @@ function repartirGolpesPorDificultad(diff, strokeIndex) {
 }
 
 /**
+ * Porcentaje del hándicap que se usa SOLO para loba (algunos grupos juegan
+ * loba con el hcp recortado, ej: 80%, en vez del 100% de las demás modalidades).
+ */
+const LOBA_HCP_PORCENTAJE = 0.8;
+
+/**
  * Calcula los golpes de ventaja por jugador y por hoyo, para uso INDIVIDUAL
- * (skins, individuales, loba). Regla: el jugador con hcp más alto del grupo
+ * (skins, individuales). Regla: el jugador con hcp más bajo del grupo
  * juega "a la par" (0 golpes). Los demás reciben golpes = diferencia
- * respecto al hcp más alto, repartidos en los hoyos más difíciles.
+ * respecto al más bajo, repartidos en los hoyos más difíciles.
  *
  * @param {Array} players - [{id, hcp}, ...]
  * @param {Array<number>} strokeIndex - 18 valores, dificultad de cada hoyo
+ * @param {number} porcentaje - opcional, % del hcp a usar antes de calcular
+ *   la diferencia (ej: 0.8 para loba al 80%). Por defecto 1 (100%, sin recorte).
+ *   El porcentaje se aplica SIN redondear cada hcp por separado; el redondeo
+ *   ocurre al final, sobre la diferencia ya calculada (evita doble redondeo).
  * @returns {Object} { [playerId]: [18 valores de golpes de ventaja] }
  */
-function calcGolpesVentaja(players, strokeIndex) {
-  const minHcp = Math.min(...players.map((p) => p.hcp));
+function calcGolpesVentaja(players, strokeIndex, porcentaje) {
+  const pct = porcentaje || 1;
+  const hcpAjustado = players.map((p) => ({ id: p.id, hcp: p.hcp * pct })); // sin redondear aquí
+  const minHcp = Math.min(...hcpAjustado.map((p) => p.hcp));
   const result = {};
 
-  players.forEach((p) => {
-    const diff = Math.max(0, p.hcp - minHcp); // golpes que recibe este jugador
+  hcpAjustado.forEach((p) => {
+    const diff = Math.max(0, Math.round(p.hcp - minHcp)); // redondeo solo al final, sobre la diferencia
     result[p.id] = repartirGolpesPorDificultad(diff, strokeIndex);
   });
 
   return result;
 }
+
+// Porcentaje de hándicap usado específicamente para loba (algunos clubes
+// juegan loba con el hcp recortado al 80%, en vez del 100% de las demás
+// modalidades).
+const PORCENTAJE_HCP_LOBA = 0.8;
 
 /**
  * Calcula los golpes de ventaja para FOURSOME, donde la ventaja se calcula
@@ -409,6 +426,155 @@ function detectarEventos(bruto, par, esSandy, esOyes) {
   return eventos;
 }
 
+/* ----------------------------------------------------------
+   6. STABLEFORD (puntos individuales, 3 premios: ida/vuelta/total)
+   Tabla de puntos según golpe NETO vs par:
+   doble bogey o peor=0, bogey=1, par=2, birdie=3, águila=4, hoyo en uno=5.
+   El hcp es el normal (100%, el de menor hcp es la referencia).
+   Sin importar cuántos empaten en un premio, cada perdedor paga el monto
+   completo una vez, repartido entre todos los empatados ganadores.
+   ---------------------------------------------------------- */
+
+/**
+ * Convierte un golpe neto en puntos stableford según el par del hoyo.
+ * @returns {number} puntos (0 a 5), o null si no hay golpe registrado
+ */
+function puntosStableford(neto, par) {
+  if (neto === null || neto === undefined) return null;
+  const diff = neto - par; // negativo = bajo par
+  if (diff <= -3) return 5; // hoyo en uno / triple-eagle, tope práctico
+  if (diff === -2) return 4; // águila
+  if (diff === -1) return 3; // birdie
+  if (diff === 0) return 2; // par
+  if (diff === 1) return 1; // bogey
+  return 0; // doble bogey o peor
+}
+
+/**
+ * Calcula los puntos stableford de cada jugador, hoyo a hoyo, y resuelve
+ * los 3 premios (ida 1-9, vuelta 10-18, total 18).
+ * @param {Object} montos - { ida, vuelta, total } montos por premio
+ * @returns {Object} { puntosPorHoyo: {id:[18]}, totales: {id:{ida,vuelta,total}}, premios: {...}, balances: {id: monto neto} }
+ */
+function calcStableford(players, brutos, ventajas, par, montos) {
+  const puntosPorHoyo = {};
+  players.forEach((p) => (puntosPorHoyo[p.id] = new Array(18).fill(null)));
+
+  for (let h = 0; h < 18; h++) {
+    players.forEach((p) => {
+      const neto = golpeNeto(brutos, ventajas, p.id, h);
+      puntosPorHoyo[p.id][h] = puntosStableford(neto, par[h]);
+    });
+  }
+
+  const sumaRango = (id, ini, fin) => {
+    let total = 0;
+    let jugados = 0;
+    for (let h = ini; h < fin; h++) {
+      const pts = puntosPorHoyo[id][h];
+      if (pts !== null) {
+        total += pts;
+        jugados++;
+      }
+    }
+    return { total, jugados };
+  };
+
+  const totales = {};
+  players.forEach((p) => {
+    totales[p.id] = {
+      ida: sumaRango(p.id, 0, 9),
+      vuelta: sumaRango(p.id, 9, 18),
+      total: sumaRango(p.id, 0, 18),
+    };
+  });
+
+  const balances = {};
+  players.forEach((p) => (balances[p.id] = 0));
+
+  function resolverPremio(key, monto) {
+    // solo cuenta a quienes ya jugaron al menos 1 hoyo de ese rango
+    const conPuntos = players
+      .map((p) => ({ id: p.id, pts: totales[p.id][key].total, jugados: totales[p.id][key].jugados }))
+      .filter((x) => x.jugados > 0);
+
+    if (conPuntos.length === 0) return { ganadores: [], montoCadaGanador: 0 };
+
+    const maxPts = Math.max(...conPuntos.map((x) => x.pts));
+    const ganadores = conPuntos.filter((x) => x.pts === maxPts).map((x) => x.id);
+    const perdedores = players.map((p) => p.id).filter((id) => !ganadores.includes(id));
+
+    if (ganadores.length === players.length) {
+      // todos empatados, nadie pierde, no hay nada que cobrar
+      return { ganadores, montoCadaGanador: 0 };
+    }
+
+    const totalCobrado = monto * perdedores.length;
+    const montoCadaGanador = totalCobrado / ganadores.length;
+
+    ganadores.forEach((id) => (balances[id] += montoCadaGanador));
+    perdedores.forEach((id) => (balances[id] -= monto));
+
+    return { ganadores, montoCadaGanador };
+  }
+
+  const premios = {
+    ida: resolverPremio("ida", montos.ida),
+    vuelta: resolverPremio("vuelta", montos.vuelta),
+    total: resolverPremio("total", montos.total),
+  };
+
+  return { puntosPorHoyo, totales, premios, balances };
+}
+
+/* ----------------------------------------------------------
+   7. BANDERAS / 3-PUTT (marcado manual por jugador y hoyo)
+   Banderas: monto base × N banderas, cobrado a cada uno de los demás.
+   3-putt: monto base × 1, pagado a cada uno de los demás.
+   Cada evento de cada jugador es independiente; no se compensan entre sí
+   más allá de la suma natural en el balance final de cada uno.
+   ---------------------------------------------------------- */
+
+/**
+ * @param {Object} banderasState - { [playerId]: [18 valores { banderas, threePutt }] }
+ * @param {Array<number>} participantIds - solo estos jugadores cobran/pagan;
+ *   quien no participa queda excluido del todo (ni cobra ni paga nada)
+ * @returns {Object} { detalle: [...por hoyo y jugador...], balances: {id: monto neto} }
+ */
+function calcBanderas(players, banderasState, monto, participantIds) {
+  const balances = {};
+  players.forEach((p) => (balances[p.id] = 0));
+  const detalle = [];
+
+  const participantes = players.filter((p) => participantIds.includes(p.id));
+
+  for (let h = 0; h < 18; h++) {
+    participantes.forEach((p) => {
+      const cfg = banderasState[p.id][h];
+      if (!cfg) return;
+
+      if (cfg.banderas > 0) {
+        const otros = participantes.filter((o) => o.id !== p.id);
+        const totalCobrado = monto * cfg.banderas;
+        otros.forEach((o) => {
+          balances[p.id] += totalCobrado;
+          balances[o.id] -= totalCobrado;
+        });
+        detalle.push({ hole: h + 1, playerId: p.id, tipo: "banderas", cantidad: cfg.banderas, monto: totalCobrado * otros.length });
+      } else if (cfg.threePutt) {
+        const otros = participantes.filter((o) => o.id !== p.id);
+        otros.forEach((o) => {
+          balances[p.id] -= monto;
+          balances[o.id] += monto;
+        });
+        detalle.push({ hole: h + 1, playerId: p.id, tipo: "3putt", cantidad: 1, monto: monto * otros.length });
+      }
+    });
+  }
+
+  return { detalle, balances };
+}
+
 /**
  * Calcula todos los pagos de unidades a través de los 18 hoyos.
  * @returns {Object} { detalle: [...por hoyo y jugador...], balances: {id: monto neto} }
@@ -577,12 +743,33 @@ function calcResumenGeneral(state) {
     balances[p.id] += unidadesResult.balances[p.id];
   });
 
-  // Loba
+  // Loba (usa el hcp al 80%, distinto al resto de modalidades)
+  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, LOBA_HCP_PORCENTAJE);
   const lobaResult = bets.loba.enabled
-    ? calcLoba(players, scores, ventajas, state.loba, bets.loba.monto)
+    ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
     balances[p.id] += lobaResult.balances[p.id];
+  });
+
+  // Stableford (puntos individuales, hcp normal al 100%, 3 premios)
+  const stablefordResult = bets.stableford.enabled
+    ? calcStableford(players, scores, ventajas, course.par, {
+        ida: bets.stableford.montoIda,
+        vuelta: bets.stableford.montoVuelta,
+        total: bets.stableford.montoTotal,
+      })
+    : { puntosPorHoyo: {}, totales: {}, premios: {}, balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
+  players.forEach((p) => {
+    balances[p.id] += stablefordResult.balances[p.id];
+  });
+
+  // Banderas / 3-putt (marcado manual)
+  const banderasResult = bets.banderas.enabled
+    ? calcBanderas(players, state.banderas, bets.banderas.monto, bets.banderas.participantes)
+    : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
+  players.forEach((p) => {
+    balances[p.id] += banderasResult.balances[p.id];
   });
 
   return {
@@ -592,6 +779,8 @@ function calcResumenGeneral(state) {
     skinsResult,
     unidadesResult,
     lobaResult,
+    stablefordResult,
+    banderasResult,
     balances,
   };
 }

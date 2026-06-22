@@ -64,6 +64,11 @@ function emptySandyFlags() {
   return new Array(18).fill(false);
 }
 
+function emptyBanderasFlags() {
+  // 18 posiciones: { banderas: 0 (sin marcar), threePutt: false }
+  return new Array(18).fill(null).map(() => ({ banderas: 0, threePutt: false }));
+}
+
 function emptyLobaHoyo() {
   // por hoyo: { loba: playerId|null, companero: playerId|null, multiplicador: number }
   // multiplicador solo se usa en el hoyo 18 (1 = normal, el jugador que va
@@ -111,6 +116,17 @@ function newState() {
       4: emptySandyFlags(),
       5: emptySandyFlags(),
     },
+    // banderas/3-putt marcado manualmente por jugador y hoyo:
+    // { [playerId]: [18 valores { banderas: number, threePutt: boolean }] }
+    // banderas > 0 y threePutt son mutuamente excluyentes en la práctica,
+    // pero se guardan por separado para no perder datos si se marcan ambos.
+    banderas: {
+      1: emptyBanderasFlags(),
+      2: emptyBanderasFlags(),
+      3: emptyBanderasFlags(),
+      4: emptyBanderasFlags(),
+      5: emptyBanderasFlags(),
+    },
     // loba: por hoyo, quién es loba y a quién elige de compañero
     loba: emptyLobaHoyo(),
     bets: {
@@ -145,6 +161,21 @@ function newState() {
       loba: {
         enabled: true,
         // monto base por jugador (como el "$100" del ejemplo)
+        monto: 0,
+      },
+      stableford: {
+        enabled: true,
+        // 3 premios separados: ida (1-9), vuelta (10-18), total (18 hoyos)
+        montoIda: 0,
+        montoVuelta: 0,
+        montoTotal: 0,
+      },
+      banderas: {
+        enabled: true,
+        // ids de jugadores que participan en banderas/3-putt hoy
+        participantes: [1, 2, 3, 4, 5],
+        // monto base: banderas cobra monto×N banderas a cada uno de los
+        // demás PARTICIPANTES; 3-putt paga monto×1 a cada uno de ellos
         monto: 0,
       },
     },
@@ -198,12 +229,25 @@ function migrateState(state) {
     if (h.multiplicador === undefined) h.multiplicador = 1;
   });
   if (!state.bets.loba) state.bets.loba = { enabled: true, monto: 0 };
+  if (!state.bets.stableford) {
+    state.bets.stableford = { enabled: true, montoIda: 0, montoVuelta: 0, montoTotal: 0 };
+  }
+  if (!state.bets.banderas) {
+    state.bets.banderas = { enabled: true, monto: 0 };
+  }
+  if (!state.banderas) {
+    state.banderas = {};
+    state.players.forEach((p) => (state.banderas[p.id] = emptyBanderasFlags()));
+  }
   if (!state.oyes) {
     state.oyes = {};
     state.players.forEach((p) => (state.oyes[p.id] = emptySandyFlags()));
   }
   if (!state.bets.individuales.participantes) {
     state.bets.individuales.participantes = state.players.map((p) => p.id);
+  }
+  if (!state.bets.banderas.participantes) {
+    state.bets.banderas.participantes = state.players.map((p) => p.id);
   }
   // migrar partidos viejos que tenían un solo campo "monto" en vez de ida/vuelta
   state.bets.individuales.matches.forEach((m) => {
