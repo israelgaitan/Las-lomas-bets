@@ -153,11 +153,6 @@ function newState() {
         enabled: true,
         montoPorHoyo: 0,
       },
-      unidades: {
-        enabled: true,
-        // mismo monto fijo para birdie, águila, hoyo en uno, sandy y oyes
-        monto: 0,
-      },
       loba: {
         enabled: true,
         // monto base por jugador (como el "$100" del ejemplo)
@@ -196,6 +191,11 @@ function loadState() {
 
 // Compatibilidad con guardados de versiones anteriores (antes de multi-cancha/loba)
 function migrateState(state) {
+  // "Unidades" se eliminó como modalidad independiente: los eventos
+  // especiales (birdie/águila/etc.) ahora se integran dentro de cada
+  // apuesta (individuales, foursome, skins, loba) con su propio monto.
+  if (state.bets && state.bets.unidades) delete state.bets.unidades;
+
   if (!state.courses) {
     const courses = defaultCourses();
     const oldRound = state.round || {};

@@ -119,7 +119,6 @@ function renderConfigScreen(state, onChange) {
     { key: "individuales", label: "Individuales" },
     { key: "foursome", label: "Foursome cruzado" },
     { key: "skins", label: "Skins" },
-    { key: "unidades", label: "Unidades (birdie/águila/etc.)" },
     { key: "loba", label: "Loba" },
     { key: "stableford", label: "Stableford" },
     { key: "banderas", label: "Banderas / 3-putt" },
@@ -159,16 +158,13 @@ function renderConfigScreen(state, onChange) {
         <label>Skins — $ por hoyo</label>
         <input type="number" value="${state.bets.skins.montoPorHoyo}" data-role="skins" />
       </div>
-
-      <div class="field">
-        <label>Unidades — $ por birdie / águila / hoyo en uno / sandy / oyes</label>
-        <input type="number" value="${state.bets.unidades.monto}" data-role="unidades" />
-      </div>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes también cobra este monto a cada uno, además del bote por ganar el hoyo.</p>
 
       <div class="field">
         <label>Loba — $ base por jugador (se multiplica x3 y se reparte)</label>
         <input type="number" value="${state.bets.loba.monto}" data-role="loba" />
       </div>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes de cualquiera del equipo suma 1 unidad extra a su favor.</p>
 
       <div class="field">
         <label>Stableford — $ premio ida (hoyos 1-9)</label>
@@ -207,11 +203,6 @@ function renderConfigScreen(state, onChange) {
     onChange(state, { skipRender: true });
   });
   betsCard.querySelector('[data-role="skins"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="unidades"]').addEventListener("input", (e) => {
-    state.bets.unidades.monto = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="unidades"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="loba"]').addEventListener("input", (e) => {
     state.bets.loba.monto = parseFloat(e.target.value) || 0;
     onChange(state, { skipRender: true });
@@ -699,38 +690,6 @@ function renderBetsScreen(state, onChange) {
   wrap.appendChild(skinsCard);
   }
 
-  /* ---- UNIDADES ---- */
-  if (state.bets.unidades.enabled) {
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Unidades</h2>`));
-  const uniCard = el(`
-    <div class="card">
-      <div class="field">
-        <label>$ por birdie / águila / hoyo en uno / sandy / oyes</label>
-        <input type="number" value="${state.bets.unidades.monto}" data-role="monto" />
-      </div>
-      <p class="help-text">Quien logra el evento cobra este monto a cada uno de los demás.</p>
-    </div>
-  `);
-  uniCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
-    state.bets.unidades.monto = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  uniCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
-  if (resumen.unidadesResult.detalle.length === 0) {
-    uniCard.appendChild(el(`<p class="help-text">Sin eventos registrados todavía.</p>`));
-  } else {
-    resumen.unidadesResult.detalle.slice().reverse().forEach((d) => {
-      uniCard.appendChild(el(`
-        <div class="match-row">
-          <span class="match-row__names">H${d.hole} · ${playerName(state, d.playerId)} · ${d.evento}</span>
-          <span class="match-row__amount amount-pos">+${fmtMoney(d.monto)}</span>
-        </div>
-      `));
-    });
-  }
-  wrap.appendChild(uniCard);
-  }
-
   /* ---- LOBA ---- */
   if (state.bets.loba.enabled) {
     wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Loba</h2>`));
@@ -974,7 +933,6 @@ function renderSummaryScreen(state, onChange) {
       return sum;
     }, 0);
     const sk = resumen.skinsResult.totalesPorJugador[p.id];
-    const uni = resumen.unidadesResult.balances[p.id];
     const lob = resumen.lobaResult.balances[p.id];
     const sf = resumen.stablefordResult.balances[p.id] || 0;
     const band = resumen.banderasResult.balances[p.id] || 0;
@@ -983,7 +941,6 @@ function renderSummaryScreen(state, onChange) {
     if (state.bets.individuales.enabled) filas.push(["Individuales", ind]);
     if (state.bets.foursome.enabled) filas.push(["Foursome", fs]);
     if (state.bets.skins.enabled) filas.push(["Skins", sk]);
-    if (state.bets.unidades.enabled) filas.push(["Unidades", uni]);
     if (state.bets.loba.enabled) filas.push(["Loba", lob]);
     if (state.bets.stableford.enabled) filas.push(["Stableford", sf]);
     if (state.bets.banderas.enabled) filas.push(["Banderas", band]);
