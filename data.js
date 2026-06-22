@@ -109,8 +109,8 @@ function emptyBanderasFlags() {
 
 function emptyLobaHoyo() {
   // por hoyo: { loba: playerId|null, companero: playerId|null, multiplicador: number }
-  // multiplicador solo se usa en el hoyo 18 (1 = normal, el jugador que va
-  // perdiendo en el acumulado puede subirlo libremente)
+  // multiplicador se usa en los hoyos 7, 8, 9, 16, 17 y 18 (1 = normal,
+  // el jugador que va perdiendo en el acumulado de loba puede subirlo)
   return new Array(18).fill(null).map(() => ({ loba: null, companero: null, multiplicador: 1 }));
 }
 

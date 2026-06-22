@@ -460,9 +460,9 @@ function renderHoleScreen(state, onChange) {
           </div>
         </div>
         <p class="help-text">El resto del grupo forma el equipo de 3 automáticamente.</p>
-        ${h === 17 ? `
+        ${[6, 7, 8, 15, 16, 17].includes(h) ? `
         <div class="field" style="margin-top:10px">
-          <label>Multiplicador del hoyo 18 (el que va perdiendo en loba puede subirlo)</label>
+          <label>Multiplicador del hoyo ${h + 1} (el que va perdiendo en loba puede subirlo)</label>
           <input type="number" min="1" step="1" value="${cfg.multiplicador}" data-role="multiplicador" />
         </div>
         <p class="help-text">Monto de este hoyo = monto base de loba × este número. Déjalo en 1 para jugarlo normal.</p>

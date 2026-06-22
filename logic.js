@@ -616,7 +616,7 @@ function calcBanderas(players, banderasState, monto, participantIds) {
  * 1 unidad extra por cada birdie/águila/hoyo en uno/sandy/oyes que logre
  * CUALQUIERA de sus jugadores. Se cobra la diferencia de unidades entre
  * los 2 equipos, multiplicada por el monto de loba (y su multiplicador
- * del hoyo 18 si aplica).
+ * en los hoyos 7, 8, 9, 16, 17 y 18 si aplica).
  * @returns {Object} { detalle: [...por hoyo...], balances: {id: monto neto} }
  */
 function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes) {
