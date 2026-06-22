@@ -24,6 +24,26 @@ const LAS_LOMAS_STROKE_INDEX = [11, 13, 15, 5, 7, 17, 1, 9, 3, 4, 8, 14, 16, 10,
 const ATLAS_PAR = [5, 4, 4, 3, 4, 4, 3, 5, 4, 5, 4, 4, 4, 3, 5, 4, 3, 4];
 const ATLAS_STROKE_INDEX = [17, 9, 1, 15, 3, 13, 11, 7, 5, 12, 4, 6, 10, 14, 18, 2, 16, 8];
 
+// Par y ventaja REALES de Las Cañadas CC (tarjeta oficial del club, escrita
+// a mano por el usuario y verificada). Par total 72.
+const CANADAS_PAR = [4, 4, 3, 4, 5, 5, 4, 4, 3, 5, 4, 3, 4, 4, 4, 5, 3, 4];
+const CANADAS_STROKE_INDEX = [15, 1, 11, 3, 13, 5, 9, 7, 17, 4, 2, 14, 12, 10, 6, 8, 18, 16];
+
+// Par y ventaja REALES de Guadalajara Country Club (tarjeta oficial del
+// club, escrita a mano por el usuario y verificada). Par total 72.
+const GDLCC_PAR = [5, 4, 4, 3, 4, 4, 4, 3, 5, 4, 4, 5, 4, 4, 3, 4, 3, 5];
+const GDLCC_STROKE_INDEX = [17, 15, 1, 11, 3, 5, 9, 7, 13, 18, 4, 8, 2, 6, 12, 14, 10, 16];
+
+// Par y ventaja REALES de Santa Anita Club (tarjeta oficial del club,
+// escrita a mano por el usuario y verificada). Par total 72.
+const SANTA_ANITA_PAR = [5, 4, 4, 4, 3, 4, 5, 4, 3, 4, 3, 4, 5, 4, 3, 4, 5, 4];
+const SANTA_ANITA_STROKE_INDEX = [5, 3, 11, 9, 15, 7, 13, 1, 17, 4, 18, 10, 2, 8, 14, 6, 12, 16];
+
+// Par y ventaja REALES de El Cielo (tarjeta oficial del club, escrita a
+// mano por el usuario y verificada). Par total 72.
+const EL_CIELO_PAR = [4, 4, 5, 3, 4, 5, 4, 4, 4, 3, 5, 4, 3, 4, 4, 3, 4, 5];
+const EL_CIELO_STROKE_INDEX = [1, 11, 13, 17, 5, 15, 9, 7, 3, 14, 12, 8, 16, 2, 4, 18, 6, 10];
+
 // Canchas precargadas. El stroke index sigue siendo una PLANTILLA genérica:
 // el usuario debe ajustarlo con la tarjeta oficial del club (la fila de
 // "Hcp" o "Handicap" por hoyo) la primera vez que juegue ahí, desde Config.
@@ -44,8 +64,26 @@ function defaultCourses() {
     {
       id: "canadas",
       name: "Las Cañadas CC",
-      par: [...DEFAULT_PAR],
-      strokeIndex: [...DEFAULT_STROKE_INDEX],
+      par: [...CANADAS_PAR],
+      strokeIndex: [...CANADAS_STROKE_INDEX],
+    },
+    {
+      id: "gdlcc",
+      name: "Guadalajara CC",
+      par: [...GDLCC_PAR],
+      strokeIndex: [...GDLCC_STROKE_INDEX],
+    },
+    {
+      id: "santaanita",
+      name: "Santa Anita Club",
+      par: [...SANTA_ANITA_PAR],
+      strokeIndex: [...SANTA_ANITA_STROKE_INDEX],
+    },
+    {
+      id: "elcielo",
+      name: "El Cielo",
+      par: [...EL_CIELO_PAR],
+      strokeIndex: [...EL_CIELO_STROKE_INDEX],
     },
   ];
 }
@@ -212,16 +250,26 @@ function migrateState(state) {
     // a mano. Si el par/strokeIndex guardado coincide EXACTO con la
     // plantilla genérica de cuando se creó, asumimos que nunca se editó.
     const realData = { lomas: { par: LAS_LOMAS_PAR, strokeIndex: LAS_LOMAS_STROKE_INDEX },
-                        atlas: { par: ATLAS_PAR, strokeIndex: ATLAS_STROKE_INDEX } };
+                        atlas: { par: ATLAS_PAR, strokeIndex: ATLAS_STROKE_INDEX },
+                        canadas: { par: CANADAS_PAR, strokeIndex: CANADAS_STROKE_INDEX } };
     const arraysIguales = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
     state.courses.forEach((c) => {
       const real = realData[c.id];
-      if (!real) return; // canadas y canchas custom no tienen dato real aún
+      if (!real) return; // canchas custom del usuario no tienen dato real precargado
       const parEsGenerico = arraysIguales(c.par, DEFAULT_PAR);
       const siEsGenerico = arraysIguales(c.strokeIndex, DEFAULT_STROKE_INDEX);
       if (parEsGenerico) c.par = [...real.par];
       if (siEsGenerico) c.strokeIndex = [...real.strokeIndex];
+    });
+
+    // Agregar canchas precargadas NUEVAS que el usuario todavía no tenga
+    // en su lista (ej: se agregó Guadalajara CC después de que ya jugaba
+    // con la app). No se toca ninguna cancha existente, solo se añaden
+    // las que falten por id.
+    const idsExistentes = new Set(state.courses.map((c) => c.id));
+    defaultCourses().forEach((dc) => {
+      if (!idsExistentes.has(dc.id)) state.courses.push(dc);
     });
   }
   if (!state.loba) state.loba = emptyLobaHoyo();

@@ -78,7 +78,7 @@ function renderConfigScreen(state, onChange) {
     onChange(state);
   });
   wrap.appendChild(courseCard);
-  const esDatoReal = course.id === "lomas" || course.id === "atlas";
+  const esDatoReal = ["lomas", "atlas", "canadas"].includes(course.id);
   const avisoTexto = esDatoReal
     ? `${course.name} ya tiene par y hándicap por hoyo 100% reales, de la tarjeta oficial del club.`
     : `${course.name} todavía tiene una plantilla genérica de par y hándicap por hoyo. Ajústala abajo con su tarjeta oficial la primera vez que juegues ahí, para que los golpes de ventaja salgan correctos.`;
