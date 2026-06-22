@@ -65,8 +65,10 @@ function emptySandyFlags() {
 }
 
 function emptyLobaHoyo() {
-  // por hoyo: { loba: playerId|null, companero: playerId|null }
-  return new Array(18).fill(null).map(() => ({ loba: null, companero: null }));
+  // por hoyo: { loba: playerId|null, companero: playerId|null, multiplicador: number }
+  // multiplicador solo se usa en el hoyo 18 (1 = normal, el jugador que va
+  // perdiendo en el acumulado puede subirlo libremente)
+  return new Array(18).fill(null).map(() => ({ loba: null, companero: null, multiplicador: 1 }));
 }
 
 function newState() {
@@ -123,10 +125,12 @@ function newState() {
       foursome: {
         enabled: true,
         // 3 cruces fijos: 1+2 vs 3+4 / 1+2 vs 3+5 / 1+2 vs 4+5
+        // montoIda: $ por hoyo (igual para bola alta y baja) en hoyos 1-9
+        // montoVuelta: $ por hoyo (igual para bola alta y baja) en hoyos 10-18
         crosses: [
-          { id: "A", base: [1, 2], rival: [3, 4], montoAlta: 0, montoBaja: 0 },
-          { id: "B", base: [1, 2], rival: [3, 5], montoAlta: 0, montoBaja: 0 },
-          { id: "C", base: [1, 2], rival: [4, 5], montoAlta: 0, montoBaja: 0 },
+          { id: "A", base: [1, 2], rival: [3, 4], montoIda: 0, montoVuelta: 0 },
+          { id: "B", base: [1, 2], rival: [3, 5], montoIda: 0, montoVuelta: 0 },
+          { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
         ],
       },
       skins: {
@@ -171,8 +175,28 @@ function migrateState(state) {
       courseId: courses[0].id,
       currentHole: oldRound.currentHole || 1,
     };
+  } else {
+    // Actualizar canchas precargadas (lomas/atlas/canadas) que sigan con la
+    // plantilla genérica vieja, sin tocar nada que el usuario haya editado
+    // a mano. Si el par/strokeIndex guardado coincide EXACTO con la
+    // plantilla genérica de cuando se creó, asumimos que nunca se editó.
+    const realData = { lomas: { par: LAS_LOMAS_PAR, strokeIndex: LAS_LOMAS_STROKE_INDEX },
+                        atlas: { par: ATLAS_PAR, strokeIndex: ATLAS_STROKE_INDEX } };
+    const arraysIguales = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+    state.courses.forEach((c) => {
+      const real = realData[c.id];
+      if (!real) return; // canadas y canchas custom no tienen dato real aún
+      const parEsGenerico = arraysIguales(c.par, DEFAULT_PAR);
+      const siEsGenerico = arraysIguales(c.strokeIndex, DEFAULT_STROKE_INDEX);
+      if (parEsGenerico) c.par = [...real.par];
+      if (siEsGenerico) c.strokeIndex = [...real.strokeIndex];
+    });
   }
   if (!state.loba) state.loba = emptyLobaHoyo();
+  state.loba.forEach((h) => {
+    if (h.multiplicador === undefined) h.multiplicador = 1;
+  });
   if (!state.bets.loba) state.bets.loba = { enabled: true, monto: 0 };
   if (!state.oyes) {
     state.oyes = {};
@@ -187,6 +211,17 @@ function migrateState(state) {
       m.montoIda = m.monto || 0;
       m.montoVuelta = m.monto || 0;
       delete m.monto;
+    }
+  });
+  // migrar cruces de foursome viejos (montoAlta/montoBaja) al nuevo esquema
+  // por vuelta (montoIda/montoVuelta, mismo valor para alta y baja)
+  state.bets.foursome.crosses.forEach((c) => {
+    if (c.montoIda === undefined) {
+      const base = c.montoBaja || c.montoAlta || 0;
+      c.montoIda = base;
+      c.montoVuelta = base;
+      delete c.montoAlta;
+      delete c.montoBaja;
     }
   });
   return state;

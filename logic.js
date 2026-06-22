@@ -128,7 +128,34 @@ function generarTodosVsTodos(participantIds) {
   return matches;
 }
 
-function calcIndividual(match, brutos, ventajas) {
+/**
+ * Cuenta cuántos eventos especiales (birdie, águila, hoyo en uno, sandy,
+ * oyes) logró un jugador en un hoyo dado. Se usa para sumar "unidades"
+ * dentro de individuales y foursome. No incluye "ganar el hoyo" — eso se
+ * suma aparte en cada función que la usa.
+ */
+function contarEventosJugador(bruto, par, esSandy, esOyes) {
+  if (bruto === null || bruto === undefined) return 0;
+  let count = 0;
+  if (bruto === 1) count++; // hoyo en uno
+  if (bruto === par - 2 && bruto !== 1) count++; // águila
+  if (bruto === par - 1) count++; // birdie
+  if (esSandy) count++;
+  if (esOyes && par === 3) count++;
+  return count;
+}
+
+/**
+ * @param {Object} match - {a, b, montoIda, montoVuelta}
+ * @param {Array<number>} par - par de cada hoyo de la cancha activa
+ * @param {Object} sandies - { [playerId]: [18 booleanos] }
+ * @param {Object} oyes - { [playerId]: [18 booleanos] }
+ * Cada jugador suma "unidades" en el hoyo: ganar el hoyo (golpe neto más
+ * bajo) = 1 unidad, más 1 unidad por cada evento especial que logre
+ * (birdie, águila, hoyo en uno, sandy, oyes). Se cobra la DIFERENCIA de
+ * unidades entre los 2, multiplicada por el monto de esa vuelta.
+ */
+function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
   let holesCounted = 0;
@@ -144,16 +171,27 @@ function calcIndividual(match, brutos, ventajas) {
 
     const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
 
-    holesCounted++;
+    // unidades por eventos especiales (independiente de quién gane el hoyo)
+    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], oyes[match.a][h]);
+    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], oyes[match.b][h]);
+
+    // unidad por ganar el hoyo (golpe neto más bajo)
+    let unidadesA = eventosA;
+    let unidadesB = eventosB;
     let ganadorHoyo = null;
     if (na < nb) {
       ganadorHoyo = match.a;
-      saldoA += montoHoyo;
+      unidadesA += 1;
     } else if (nb < na) {
       ganadorHoyo = match.b;
-      saldoA -= montoHoyo;
+      unidadesB += 1;
     }
-    // empate: no se paga nada, no se acumula
+    // empate en golpe neto: nadie suma la unidad de "ganar el hoyo",
+    // pero los eventos especiales de cada uno sí cuentan igual
+
+    holesCounted++;
+    const diffUnidades = unidadesA - unidadesB;
+    saldoA += diffUnidades * montoHoyo;
 
     holeResults.push({
       hole: h + 1,
@@ -162,6 +200,9 @@ function calcIndividual(match, brutos, ventajas) {
       netoB: nb,
       ganadorHoyo,
       montoHoyo,
+      unidadesA,
+      unidadesB,
+      diffUnidades,
     });
   }
 
@@ -195,12 +236,18 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * Calcula el resultado hoyo a hoyo y acumulado de un cruce de foursome.
  * @param {Object} ventajasCruce - golpes de ventaja SOLO para este cruce
  *   (de calcVentajasForusome), no los de calcGolpesVentaja individual.
+ * @param {Array<number>} par - par de cada hoyo de la cancha activa
+ * @param {Object} sandies, oyes - { [playerId]: [18 booleanos] }
+ * Cada pareja suma "unidades" en el hoyo: ganar bola baja = 1, ganar bola
+ * alta = 1, más 1 unidad por cada evento especial (birdie, águila, hoyo en
+ * uno, sandy, oyes) de CUALQUIERA de los 2 jugadores de la pareja. Se
+ * cobra la diferencia de unidades entre las 2 parejas, multiplicada por
+ * el monto de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
   const holeResults = [];
-  let saldoAlta = 0; // dinero neto a favor de "base" en bola alta
-  let saldoBaja = 0;
+  let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
   for (let h = 0; h < 18; h++) {
     const base = bolaAltaBaja(cross.base, brutos, ventajasCruce, h);
@@ -221,11 +268,27 @@ function calcForusomeCross(cross, brutos, ventajasCruce) {
     if (base.alta < rival.alta) resultAlta = "base";
     else if (base.alta > rival.alta) resultAlta = "rival";
 
-    if (resultBaja === "base") saldoBaja += cross.montoBaja;
-    else if (resultBaja === "rival") saldoBaja -= cross.montoBaja;
+    const montoHoyo = h < 9 ? cross.montoIda : cross.montoVuelta;
 
-    if (resultAlta === "base") saldoAlta += cross.montoAlta;
-    else if (resultAlta === "rival") saldoAlta -= cross.montoAlta;
+    // eventos especiales de cualquiera de los 2 jugadores de cada pareja
+    const eventosBase = cross.base.reduce(
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      0
+    );
+    const eventosRival = cross.rival.reduce(
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      0
+    );
+
+    let unidadesBase = eventosBase;
+    let unidadesRival = eventosRival;
+    if (resultBaja === "base") unidadesBase += 1;
+    else if (resultBaja === "rival") unidadesRival += 1;
+    if (resultAlta === "base") unidadesBase += 1;
+    else if (resultAlta === "rival") unidadesRival += 1;
+
+    const diffUnidades = unidadesBase - unidadesRival;
+    saldoTotal += diffUnidades * montoHoyo;
 
     holeResults.push({
       hole: h + 1,
@@ -234,6 +297,10 @@ function calcForusomeCross(cross, brutos, ventajasCruce) {
       rival,
       resultAlta,
       resultBaja,
+      montoHoyo,
+      unidadesBase,
+      unidadesRival,
+      diffUnidades,
     });
   }
 
@@ -242,9 +309,7 @@ function calcForusomeCross(cross, brutos, ventajasCruce) {
     base: cross.base,
     rival: cross.rival,
     holeResults,
-    saldoAlta,
-    saldoBaja,
-    saldoTotal: saldoAlta + saldoBaja,
+    saldoTotal,
   };
 }
 
@@ -431,7 +496,8 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto) {
     else if (mejorTrio < mejorPareja) ganador = "trio";
     // empate: no se paga nada
 
-    const totalBote = monto * 3; // siempre 3 unidades de apuesta en juego
+    const multiplicador = cfg.multiplicador || 1;
+    const totalBote = monto * multiplicador * 3; // siempre 3 unidades de apuesta en juego, ajustadas por el multiplicador
     if (ganador === "pareja") {
       const cadaUno = totalBote / pareja.length;
       pareja.forEach((id) => (balances[id] += cadaUno));
@@ -451,6 +517,8 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto) {
       mejorPareja,
       mejorTrio,
       ganador,
+      multiplicador,
+      totalBote,
     });
   }
 
@@ -471,7 +539,7 @@ function calcResumenGeneral(state) {
 
   // Individuales
   const individualesResults = bets.individuales.enabled
-    ? bets.individuales.matches.map((m) => calcIndividual(m, scores, ventajas))
+    ? bets.individuales.matches.map((m) => calcIndividual(m, scores, ventajas, course.par, state.sandies, state.oyes))
     : [];
   individualesResults.forEach((r) => {
     balances[r.a] += r.saldoA;
@@ -483,7 +551,7 @@ function calcResumenGeneral(state) {
     ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id]))
+    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyes))
     : [];
   foursomeResults.forEach((r) => {
     // saldoTotal positivo = a favor de "base" (1+2), repartido entre los 2

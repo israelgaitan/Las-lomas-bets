@@ -144,12 +144,12 @@ function renderConfigScreen(state, onChange) {
   const betsCard = el(`
     <div class="card">
       <div class="field">
-        <label>Foursome — $ bola baja (por cruce, por hoyo)</label>
-        <input type="number" value="${state.bets.foursome.crosses[0].montoBaja}" data-role="fs-baja" />
+        <label>Foursome — $ por hoyo, hoyos 1-9 (igual para bola alta y baja)</label>
+        <input type="number" value="${state.bets.foursome.crosses[0].montoIda}" data-role="fs-ida" />
       </div>
       <div class="field">
-        <label>Foursome — $ bola alta (por cruce, por hoyo)</label>
-        <input type="number" value="${state.bets.foursome.crosses[0].montoAlta}" data-role="fs-alta" />
+        <label>Foursome — $ por hoyo, hoyos 10-18 (el que va perdiendo puede subirlo)</label>
+        <input type="number" value="${state.bets.foursome.crosses[0].montoVuelta}" data-role="fs-vuelta" />
       </div>
       <p class="help-text">Mismo monto para los 3 cruces (1+2 vs 3+4 / vs 3+5 / vs 4+5). Editable por cruce en la pestaña Apuestas.</p>
 
@@ -170,18 +170,18 @@ function renderConfigScreen(state, onChange) {
     </div>
   `);
 
-  betsCard.querySelector('[data-role="fs-baja"]').addEventListener("input", (e) => {
+  betsCard.querySelector('[data-role="fs-ida"]').addEventListener("input", (e) => {
     const v = parseFloat(e.target.value) || 0;
-    state.bets.foursome.crosses.forEach((c) => (c.montoBaja = v));
+    state.bets.foursome.crosses.forEach((c) => (c.montoIda = v));
     onChange(state, { skipRender: true });
   });
-  betsCard.querySelector('[data-role="fs-baja"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="fs-alta"]').addEventListener("input", (e) => {
+  betsCard.querySelector('[data-role="fs-ida"]').addEventListener("change", () => onChange(state));
+  betsCard.querySelector('[data-role="fs-vuelta"]').addEventListener("input", (e) => {
     const v = parseFloat(e.target.value) || 0;
-    state.bets.foursome.crosses.forEach((c) => (c.montoAlta = v));
+    state.bets.foursome.crosses.forEach((c) => (c.montoVuelta = v));
     onChange(state, { skipRender: true });
   });
-  betsCard.querySelector('[data-role="fs-alta"]').addEventListener("change", () => onChange(state));
+  betsCard.querySelector('[data-role="fs-vuelta"]').addEventListener("change", () => onChange(state));
   betsCard.querySelector('[data-role="skins"]').addEventListener("input", (e) => {
     state.bets.skins.montoPorHoyo = parseFloat(e.target.value) || 0;
     onChange(state, { skipRender: true });
@@ -393,6 +393,13 @@ function renderHoleScreen(state, onChange) {
           </div>
         </div>
         <p class="help-text">El resto del grupo forma el equipo de 3 automáticamente.</p>
+        ${h === 17 ? `
+        <div class="field" style="margin-top:10px">
+          <label>Multiplicador del hoyo 18 (el que va perdiendo en loba puede subirlo)</label>
+          <input type="number" min="1" step="1" value="${cfg.multiplicador}" data-role="multiplicador" />
+        </div>
+        <p class="help-text">Monto de este hoyo = monto base de loba × este número. Déjalo en 1 para jugarlo normal.</p>
+        ` : ""}
       </div>
     `);
     lobaCard.querySelector('[data-role="loba-select"]').addEventListener("change", (e) => {
@@ -405,6 +412,14 @@ function renderHoleScreen(state, onChange) {
       cfg.companero = e.target.value ? parseInt(e.target.value) : null;
       onChange(state);
     });
+    const multInput = lobaCard.querySelector('[data-role="multiplicador"]');
+    if (multInput) {
+      multInput.addEventListener("input", (e) => {
+        cfg.multiplicador = parseFloat(e.target.value) || 1;
+        onChange(state, { skipRender: true });
+      });
+      multInput.addEventListener("change", () => onChange(state));
+    }
     wrap.appendChild(lobaCard);
   }
 
@@ -548,30 +563,31 @@ function renderBetsScreen(state, onChange) {
         <p class="card__title">${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
         <div class="field-row">
           <div class="field">
-            <label>$ bola baja / hoyo</label>
-            <input type="number" value="${cross.montoBaja}" data-role="baja" />
+            <label>$/hoyo, hoyos 1-9</label>
+            <input type="number" value="${cross.montoIda}" data-role="ida" />
           </div>
           <div class="field">
-            <label>$ bola alta / hoyo</label>
-            <input type="number" value="${cross.montoAlta}" data-role="alta" />
+            <label>$/hoyo, hoyos 10-18</label>
+            <input type="number" value="${cross.montoVuelta}" data-role="vuelta" />
           </div>
         </div>
+        <p class="help-text" style="margin-top:-6px">Mismo monto aplica a bola alta y bola baja.</p>
         <div class="match-row" style="border-top:1px solid var(--linea);padding-top:10px">
           <span class="match-row__names">Saldo del cruce</span>
           <span class="match-row__amount ${moneyClass(r.saldoTotal)}">${fmtMoney(Math.abs(r.saldoTotal))} ${r.saldoTotal === 0 ? "" : (r.saldoTotal > 0 ? "a favor de " + baseNames : "a favor de " + rivalNames)}</span>
         </div>
       </div>
     `);
-    card.querySelector('[data-role="baja"]').addEventListener("input", (e) => {
-      cross.montoBaja = parseFloat(e.target.value) || 0;
+    card.querySelector('[data-role="ida"]').addEventListener("input", (e) => {
+      cross.montoIda = parseFloat(e.target.value) || 0;
       onChange(state, { skipRender: true });
     });
-    card.querySelector('[data-role="baja"]').addEventListener("change", () => onChange(state));
-    card.querySelector('[data-role="alta"]').addEventListener("input", (e) => {
-      cross.montoAlta = parseFloat(e.target.value) || 0;
+    card.querySelector('[data-role="ida"]').addEventListener("change", () => onChange(state));
+    card.querySelector('[data-role="vuelta"]').addEventListener("input", (e) => {
+      cross.montoVuelta = parseFloat(e.target.value) || 0;
       onChange(state, { skipRender: true });
     });
-    card.querySelector('[data-role="alta"]').addEventListener("change", () => onChange(state));
+    card.querySelector('[data-role="vuelta"]').addEventListener("change", () => onChange(state));
     wrap.appendChild(card);
   });
   }
@@ -672,9 +688,10 @@ function renderBetsScreen(state, onChange) {
         const parejaNames = d.pareja.map((id) => playerName(state, id)).join(" + ");
         const trioNames = d.trio.map((id) => playerName(state, id)).join(" + ");
         const ganadorTxt = d.ganador === "pareja" ? parejaNames : d.ganador === "trio" ? trioNames : "Empate";
+        const multTxt = d.multiplicador > 1 ? ` (×${d.multiplicador})` : "";
         lobaCard.appendChild(el(`
           <div class="match-row">
-            <span class="match-row__names">H${d.hole} · ${parejaNames} vs ${trioNames}</span>
+            <span class="match-row__names">H${d.hole}${multTxt} · ${parejaNames} vs ${trioNames}</span>
             <span class="match-row__amount" style="font-size:12px">${ganadorTxt}</span>
           </div>
         `));
