@@ -755,6 +755,42 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
  * Junta los resultados de las 5 modalidades en un balance neto por jugador.
  * Respeta los interruptores enabled de cada modalidad.
  */
+/**
+ * Calcula el resumen general pero usando SOLO los golpes/marcas hasta el
+ * hoyo indicado (inclusive), ignorando cualquier dato de hoyos posteriores.
+ * Útil para mostrar "cómo voy hasta aquí" mientras se juega la ronda.
+ * No muta el state original.
+ * @param {number} hastaHoyo - número de hoyo 1-18 (inclusive)
+ */
+function calcResumenHastaHoyo(state, hastaHoyo) {
+  const recortado = JSON.parse(JSON.stringify(state));
+
+  const limpiarDesde = (obj) => {
+    Object.keys(obj).forEach((playerId) => {
+      for (let h = hastaHoyo; h < 18; h++) {
+        if (Array.isArray(obj[playerId])) obj[playerId][h] = null;
+      }
+    });
+  };
+
+  limpiarDesde(recortado.scores);
+  // sandies/oyes/banderas usan false/0 como "vacío", no null
+  Object.keys(recortado.sandies).forEach((id) => {
+    for (let h = hastaHoyo; h < 18; h++) recortado.sandies[id][h] = false;
+  });
+  Object.keys(recortado.oyes).forEach((id) => {
+    for (let h = hastaHoyo; h < 18; h++) recortado.oyes[id][h] = false;
+  });
+  Object.keys(recortado.banderas).forEach((id) => {
+    for (let h = hastaHoyo; h < 18; h++) recortado.banderas[id][h] = { banderas: 0, threePutt: false };
+  });
+  for (let h = hastaHoyo; h < 18; h++) {
+    recortado.loba[h] = { loba: null, companero: null, multiplicador: 1 };
+  }
+
+  return calcResumenGeneral(recortado);
+}
+
 function calcResumenGeneral(state) {
   const { players, scores, bets, round } = state;
   const course = getActiveCourse(state);

@@ -505,6 +505,69 @@ function renderHoleScreen(state, onChange) {
     wrap.appendChild(lobaCard);
   }
 
+  /* ---- ACUMULADO HASTA ESTE HOYO (para ir verificando sobre la marcha) ---- */
+  wrap.appendChild(el(`<p class="section-divider">Acumulado hasta el hoyo ${h + 1}</p>`));
+  const resumenHasta = calcResumenHastaHoyo(state, h + 1);
+  const accCard = el(`<div class="card"></div>`);
+  state.players.forEach((p) => {
+    const bal = resumenHasta.balances[p.id];
+    accCard.appendChild(el(`
+      <div class="balance-row" style="margin-bottom:6px">
+        <span class="balance-row__name" style="font-size:14px">${p.name}</span>
+        <span class="balance-row__amount ${moneyClass(bal)}" style="font-size:15px">${fmtMoney(bal)}</span>
+      </div>
+    `));
+  });
+
+  const toggleBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:6px">Ver desglose por modalidad</button>`);
+  const desgloseWrap = el(`<div style="display:none;margin-top:8px"></div>`);
+  state.players.forEach((p) => {
+    const ind = resumenHasta.individualesResults.reduce((sum, r) => {
+      if (r.a === p.id) return sum + r.saldoA;
+      if (r.b === p.id) return sum - r.saldoA;
+      return sum;
+    }, 0);
+    const fs = resumenHasta.foursomeResults.reduce((sum, r) => {
+      if (r.base.includes(p.id)) return sum + r.saldoTotal / 2;
+      if (r.rival.includes(p.id)) return sum - r.saldoTotal / 2;
+      return sum;
+    }, 0);
+    const sk = resumenHasta.skinsResult.totalesPorJugador[p.id];
+    const lob = resumenHasta.lobaResult.balances[p.id];
+    const sf = resumenHasta.stablefordResult.balances[p.id] || 0;
+    const band = resumenHasta.banderasResult.balances[p.id] || 0;
+
+    const filas = [];
+    if (state.bets.individuales.enabled) filas.push(["Individuales", ind]);
+    if (state.bets.foursome.enabled) filas.push(["Foursome", fs]);
+    if (state.bets.skins.enabled) filas.push(["Skins", sk]);
+    if (state.bets.loba.enabled) filas.push(["Loba", lob]);
+    if (state.bets.stableford.enabled) filas.push(["Stableford", sf]);
+    if (state.bets.banderas.enabled) filas.push(["Banderas", band]);
+
+    const filasHtml = filas.map(([label, val]) => `
+      <div class="match-row" style="padding:3px 0">
+        <span class="match-row__names" style="font-size:11px;opacity:0.7">${label}</span>
+        <span class="match-row__amount ${moneyClass(val)}" style="font-size:11px">${fmtMoney(val)}</span>
+      </div>
+    `).join("");
+
+    desgloseWrap.appendChild(el(`
+      <div style="margin-bottom:10px">
+        <p style="font-weight:600;font-size:12px;margin:0 0 4px">${p.name}</p>
+        ${filasHtml}
+      </div>
+    `));
+  });
+  toggleBtn.addEventListener("click", () => {
+    const visible = desgloseWrap.style.display !== "none";
+    desgloseWrap.style.display = visible ? "none" : "block";
+    toggleBtn.textContent = visible ? "Ver desglose por modalidad" : "Ocultar desglose";
+  });
+  accCard.appendChild(toggleBtn);
+  accCard.appendChild(desgloseWrap);
+  wrap.appendChild(accCard);
+
   return wrap;
 }
 
