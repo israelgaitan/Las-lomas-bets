@@ -9,7 +9,9 @@
 
   // Si no hay hándicaps configurados todavía (todos en 0) y no hay golpes,
   // arrancamos en la pantalla de configuración.
-  const allHcpZero = state.players.every((p) => p.hcp === 0);
+  const allHcpZero = state.players.every((p) =>
+    Object.values(p.hcp).every((v) => v === 0)
+  );
   const noScores = holesPlayedCount(state) === 0;
   if (allHcpZero && noScores) activeTab = "config";
 

@@ -31,17 +31,20 @@ const LOBA_HCP_PORCENTAJE = 0.8;
  * juega "a la par" (0 golpes). Los demás reciben golpes = diferencia
  * respecto al más bajo, repartidos en los hoyos más difíciles.
  *
- * @param {Array} players - [{id, hcp}, ...]
+ * @param {Array} players - [{id, hcp: {individuales, foursome, skins, loba, stableford}}, ...]
  * @param {Array<number>} strokeIndex - 18 valores, dificultad de cada hoyo
+ * @param {string} modalidad - cuál hándicap leer: "individuales", "foursome",
+ *   "skins", "loba" o "stableford". Cada jugador puede llevar un hándicap
+ *   distinto por modalidad (ej: acuerdos históricos que no siguen el hcp oficial).
  * @param {number} porcentaje - opcional, % del hcp a usar antes de calcular
  *   la diferencia (ej: 0.8 para loba al 80%). Por defecto 1 (100%, sin recorte).
  *   El porcentaje se aplica SIN redondear cada hcp por separado; el redondeo
  *   ocurre al final, sobre la diferencia ya calculada (evita doble redondeo).
  * @returns {Object} { [playerId]: [18 valores de golpes de ventaja] }
  */
-function calcGolpesVentaja(players, strokeIndex, porcentaje) {
+function calcGolpesVentaja(players, strokeIndex, modalidad, porcentaje) {
   const pct = porcentaje || 1;
-  const hcpAjustado = players.map((p) => ({ id: p.id, hcp: p.hcp * pct })); // sin redondear aquí
+  const hcpAjustado = players.map((p) => ({ id: p.id, hcp: p.hcp[modalidad] * pct })); // sin redondear aquí
   const minHcp = Math.min(...hcpAjustado.map((p) => p.hcp));
   const result = {};
 
@@ -73,7 +76,7 @@ const PORCENTAJE_HCP_LOBA = 0.8;
  *   el resto del cruce queda en 0 (juegan a la par dentro de su pareja).
  */
 function calcVentajasForusome(players, strokeIndex, crosses) {
-  const hcpOf = (id) => players.find((p) => p.id === id).hcp;
+  const hcpOf = (id) => players.find((p) => p.id === id).hcp.foursome;
   const result = {};
 
   crosses.forEach((cross) => {
@@ -610,19 +613,25 @@ function calcBanderas(players, banderasState, monto, participantIds) {
 
 /**
  * @param {Array} lobaConfig - 18 posiciones { loba, companero, multiplicador }
+ *   companero puede ser un playerId (pareja normal, 2 vs 3) o el string
+ *   "solo" (el jugador de loba va solo, 1 vs 4).
  * @param {Array<number>} par - par de cada hoyo de la cancha activa
  * @param {Object} sandies, oyes - { [playerId]: [18 booleanos] }
- * Cada equipo (pareja o trío) suma 1 unidad por ganar mejor bola neta, más
- * 1 unidad extra por cada birdie/águila/hoyo en uno/sandy/oyes que logre
- * CUALQUIERA de sus jugadores. Se cobra la diferencia de unidades entre
- * los 2 equipos, multiplicada por el monto de loba (y su multiplicador
- * en los hoyos 7, 8, 9, 16, 17 y 18 si aplica).
+ * Cada equipo suma 1 unidad por ganar mejor bola neta, más 1 unidad extra
+ * por cada birdie/águila/hoyo en uno/sandy/oyes que logre CUALQUIERA de
+ * sus jugadores. Se cobra la diferencia de unidades entre los 2 equipos,
+ * multiplicada por el monto de loba y el multiplicador de ese hoyo.
+ * Si el hoyo empata (diferencia de unidades = 0), no se paga nada y el
+ * monto base de ese hoyo se acumula, sumándose al monto del siguiente
+ * hoyo de loba configurado (igual que en skins).
  * @returns {Object} { detalle: [...por hoyo...], balances: {id: monto neto} }
  */
 function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
   const detalle = [];
+
+  let acumulado = 0; // extra por empates, se suma al monto base del siguiente hoyo CONFIGURADO
 
   for (let h = 0; h < 18; h++) {
     const cfg = lobaConfig[h];
@@ -631,7 +640,8 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       continue;
     }
 
-    const pareja = [cfg.loba, cfg.companero];
+    const vaSolo = cfg.companero === "solo";
+    const pareja = vaSolo ? [cfg.loba] : [cfg.loba, cfg.companero];
     const trio = players.map((p) => p.id).filter((id) => !pareja.includes(id));
 
     const netosPareja = pareja
@@ -642,7 +652,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       .filter((n) => n !== null);
 
     if (netosPareja.length < pareja.length || netosTrio.length < trio.length) {
-      detalle.push({ hole: h + 1, configurado: true, jugado: false, pareja, trio });
+      detalle.push({ hole: h + 1, configurado: true, jugado: false, pareja, trio, vaSolo });
       continue;
     }
 
@@ -674,21 +684,31 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 
     const diffUnidades = unidadesPareja - unidadesTrio;
     const multiplicador = cfg.multiplicador || 1;
+    const montoVigente = monto + acumulado;
     // NOTA: el "×3" viene de la mecánica original de loba (siempre se
     // mueven 3 unidades de apuesta en juego por cada unidad de diferencia:
     // monto×3 cuando diff=1, equivalente a la regla confirmada por el
     // usuario "gana pareja se lleva 300 con monto=100"). Con diff>1 (ganar
     // el hoyo + birdie, etc.) escalamos linealmente: monto×3 por cada
     // unidad de diferencia.
-    const totalBote = monto * multiplicador * Math.abs(diffUnidades) * 3;
+    const totalBote = montoVigente * multiplicador * Math.abs(diffUnidades) * 3;
+
+    let acumulaSiguiente = false;
     if (diffUnidades > 0) {
       const cadaUno = totalBote / pareja.length;
       pareja.forEach((id) => (balances[id] += cadaUno));
       trio.forEach((id) => (balances[id] -= totalBote / trio.length));
+      acumulado = 0;
     } else if (diffUnidades < 0) {
       const cadaUno = totalBote / trio.length;
       trio.forEach((id) => (balances[id] += cadaUno));
       pareja.forEach((id) => (balances[id] -= totalBote / pareja.length));
+      acumulado = 0;
+    } else {
+      // empate total (golpe neto Y eventos especiales iguales): no se paga
+      // nada, el monto base de este hoyo se acumula para el siguiente
+      acumulaSiguiente = true;
+      acumulado += monto * multiplicador;
     }
 
     detalle.push({
@@ -697,6 +717,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       jugado: true,
       pareja,
       trio,
+      vaSolo,
       mejorPareja,
       mejorTrio,
       ganador,
@@ -705,6 +726,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       unidadesTrio,
       diffUnidades,
       totalBote,
+      acumulaSiguiente,
     });
   }
 
@@ -718,21 +740,21 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 function calcResumenGeneral(state) {
   const { players, scores, bets, round } = state;
   const course = getActiveCourse(state);
-  const ventajas = calcGolpesVentaja(players, course.strokeIndex);
 
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
 
-  // Individuales
+  // Individuales (hándicap propio de esta modalidad)
+  const ventajasIndividuales = calcGolpesVentaja(players, course.strokeIndex, "individuales");
   const individualesResults = bets.individuales.enabled
-    ? bets.individuales.matches.map((m) => calcIndividual(m, scores, ventajas, course.par, state.sandies, state.oyes))
+    ? bets.individuales.matches.map((m) => calcIndividual(m, scores, ventajasIndividuales, course.par, state.sandies, state.oyes))
     : [];
   individualesResults.forEach((r) => {
     balances[r.a] += r.saldoA;
     balances[r.b] -= r.saldoA;
   });
 
-  // Foursome (ventaja calculada por SUMA de hcp de cada pareja, no individual)
+  // Foursome (ventaja calculada por SUMA de hcp.foursome de cada pareja, no individual)
   const ventajasForusome = bets.foursome.enabled
     ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
@@ -747,19 +769,21 @@ function calcResumenGeneral(state) {
     r.rival.forEach((id) => (balances[id] += perRival));
   });
 
-  // Skins (totalesPorJugador ya es el balance neto: positivo gana, negativo
-  // paga). Incluye además el cobro por birdie/águila/hoyo en uno/sandy/oyes.
+  // Skins (hándicap propio de esta modalidad). totalesPorJugador ya es el
+  // balance neto: positivo gana, negativo paga. Incluye además el cobro
+  // por birdie/águila/hoyo en uno/sandy/oyes.
+  const ventajasSkins = calcGolpesVentaja(players, course.strokeIndex, "skins");
   const skinsResult = bets.skins.enabled
-    ? calcSkins(players, scores, ventajas, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes)
+    ? calcSkins(players, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes)
     : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
   players.forEach((p) => {
     balances[p.id] += skinsResult.totalesPorJugador[p.id];
   });
 
-  // Loba (usa el hcp al 80%, distinto al resto de modalidades). Incluye
-  // además el cobro por birdie/águila/hoyo en uno/sandy/oyes de cualquiera
-  // de los jugadores del equipo.
-  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, LOBA_HCP_PORCENTAJE);
+  // Loba (hándicap propio de esta modalidad, además recortado al 80%).
+  // Incluye además el cobro por birdie/águila/hoyo en uno/sandy/oyes de
+  // cualquiera de los jugadores del equipo.
+  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba", LOBA_HCP_PORCENTAJE);
   const lobaResult = bets.loba.enabled
     ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
@@ -767,9 +791,10 @@ function calcResumenGeneral(state) {
     balances[p.id] += lobaResult.balances[p.id];
   });
 
-  // Stableford (puntos individuales, hcp normal al 100%, 3 premios)
+  // Stableford (hándicap propio de esta modalidad, 3 premios)
+  const ventajasStableford = calcGolpesVentaja(players, course.strokeIndex, "stableford");
   const stablefordResult = bets.stableford.enabled
-    ? calcStableford(players, scores, ventajas, course.par, {
+    ? calcStableford(players, scores, ventajasStableford, course.par, {
         ida: bets.stableford.montoIda,
         vuelta: bets.stableford.montoVuelta,
         total: bets.stableford.montoTotal,
@@ -779,7 +804,7 @@ function calcResumenGeneral(state) {
     balances[p.id] += stablefordResult.balances[p.id];
   });
 
-  // Banderas / 3-putt (marcado manual)
+  // Banderas / 3-putt (marcado manual, no usa hándicap)
   const banderasResult = bets.banderas.enabled
     ? calcBanderas(players, state.banderas, bets.banderas.monto, bets.banderas.participantes)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
@@ -788,7 +813,7 @@ function calcResumenGeneral(state) {
   });
 
   return {
-    ventajas,
+    ventajas: ventajasIndividuales, // se mantiene por compatibilidad de nombre
     individualesResults,
     foursomeResults,
     skinsResult,

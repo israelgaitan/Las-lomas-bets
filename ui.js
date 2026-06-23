@@ -86,19 +86,31 @@ function renderConfigScreen(state, onChange) {
 
   /* ---- JUGADORES ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores y hándicap</h2>`));
+  wrap.appendChild(el(`<p class="help-text">Cada jugador puede llevar un hándicap distinto por modalidad (ej: acuerdos históricos que no siguen el hcp oficial actual).</p>`));
+
+  const HCP_MODALIDADES = [
+    { key: "individuales", label: "Indiv." },
+    { key: "foursome", label: "Foursome" },
+    { key: "skins", label: "Skins" },
+    { key: "loba", label: "Loba" },
+    { key: "stableford", label: "Stableford" },
+  ];
 
   state.players.forEach((p) => {
     const card = el(`
       <div class="card">
-        <div class="field-row">
-          <div class="field" style="flex:2">
-            <label>Nombre</label>
-            <input type="text" value="${p.name}" data-role="name" />
-          </div>
-          <div class="field" style="flex:1">
-            <label>HCP</label>
-            <input type="number" value="${p.hcp}" step="0.1" data-role="hcp" />
-          </div>
+        <div class="field">
+          <label>Nombre</label>
+          <input type="text" value="${p.name}" data-role="name" />
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
+          ${HCP_MODALIDADES.map((m) => `
+            <div style="text-align:center">
+              <div style="font-size:10px;opacity:0.6;margin-bottom:3px">${m.label}</div>
+              <input type="number" value="${p.hcp[m.key]}" step="0.1" data-hcp-key="${m.key}"
+                style="width:100%;text-align:center;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:8px;padding:8px 2px;color:var(--crema);font-family:var(--font-mono);font-size:13px" />
+            </div>
+          `).join("")}
         </div>
       </div>
     `);
@@ -106,9 +118,13 @@ function renderConfigScreen(state, onChange) {
       p.name = e.target.value;
       onChange(state, { skipRender: true });
     });
-    card.querySelector('[data-role="hcp"]').addEventListener("input", (e) => {
-      p.hcp = parseFloat(e.target.value) || 0;
-      onChange(state);
+    HCP_MODALIDADES.forEach((m) => {
+      const input = card.querySelector(`[data-hcp-key="${m.key}"]`);
+      input.addEventListener("input", (e) => {
+        p.hcp[m.key] = parseFloat(e.target.value) || 0;
+        onChange(state, { skipRender: true });
+      });
+      input.addEventListener("change", () => onChange(state));
     });
     wrap.appendChild(card);
   });
@@ -343,7 +359,6 @@ function renderHoleScreen(state, onChange) {
       <div class="player-row">
         <div class="player-row__top">
           <span class="player-row__name">${p.name}</span>
-          <span class="player-row__hcp">HCP ${p.hcp}</span>
         </div>
         <div class="player-row__controls">
           <div class="stepper">
@@ -455,18 +470,17 @@ function renderHoleScreen(state, onChange) {
             <label>Compañero</label>
             <select data-role="comp-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
               <option value="">— elegir —</option>
+              <option value="solo" ${cfg.companero === "solo" ? "selected" : ""}>Va solo (1 vs 4)</option>
               ${state.players.filter((p) => p.id !== cfg.loba).map((p) => `<option value="${p.id}" ${cfg.companero === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
             </select>
           </div>
         </div>
-        <p class="help-text">El resto del grupo forma el equipo de 3 automáticamente.</p>
-        ${[6, 7, 8, 15, 16, 17].includes(h) ? `
+        <p class="help-text">${cfg.companero === "solo" ? "Va solo contra los otros 4 jugadores juntos." : "El resto del grupo forma el equipo de 3 automáticamente."}</p>
         <div class="field" style="margin-top:10px">
-          <label>Multiplicador del hoyo ${h + 1} (el que va perdiendo en loba puede subirlo)</label>
+          <label>Multiplicador del hoyo ${h + 1} (puedes subirlo manualmente cuando decidan, ej: irse solo)</label>
           <input type="number" min="1" step="1" value="${cfg.multiplicador}" data-role="multiplicador" />
         </div>
         <p class="help-text">Monto de este hoyo = monto base de loba × este número. Déjalo en 1 para jugarlo normal.</p>
-        ` : ""}
       </div>
     `);
     lobaCard.querySelector('[data-role="loba-select"]').addEventListener("change", (e) => {
@@ -476,7 +490,8 @@ function renderHoleScreen(state, onChange) {
       onChange(state);
     });
     lobaCard.querySelector('[data-role="comp-select"]').addEventListener("change", (e) => {
-      cfg.companero = e.target.value ? parseInt(e.target.value) : null;
+      const val = e.target.value;
+      cfg.companero = val === "" ? null : val === "solo" ? "solo" : parseInt(val);
       onChange(state);
     });
     const multInput = lobaCard.querySelector('[data-role="multiplicador"]');
@@ -720,9 +735,9 @@ function renderBetsScreen(state, onChange) {
       lobaCard.appendChild(el(`<p class="help-text">Aún no hay hoyos de loba jugados. Configúralos en la pestaña Hoyo.</p>`));
     } else {
       jugados.slice().reverse().forEach((d) => {
-        const parejaNames = d.pareja.map((id) => playerName(state, id)).join(" + ");
+        const parejaNames = d.pareja.map((id) => playerName(state, id)).join(" + ") + (d.vaSolo ? " (solo)" : "");
         const trioNames = d.trio.map((id) => playerName(state, id)).join(" + ");
-        const ganadorTxt = d.ganador === "pareja" ? parejaNames : d.ganador === "trio" ? trioNames : "Empate";
+        const ganadorTxt = d.ganador === "pareja" ? parejaNames : d.ganador === "trio" ? trioNames : (d.acumulaSiguiente ? "Empate, acumula" : "Empate");
         const multTxt = d.multiplicador > 1 ? ` (×${d.multiplicador})` : "";
         lobaCard.appendChild(el(`
           <div class="match-row">

@@ -89,7 +89,20 @@ function defaultCourses() {
 }
 
 function defaultPlayer(id, name) {
-  return { id, name, hcp: 0 };
+  // hándicap independiente por modalidad: cada jugador puede llevar un
+  // hándicap distinto en individuales, foursome, skins, loba y stableford
+  // (ej: acuerdos históricos / "biblia" que no siguen el hcp oficial actual).
+  return {
+    id,
+    name,
+    hcp: {
+      individuales: 0,
+      foursome: 0,
+      skins: 0,
+      loba: 0,
+      stableford: 0,
+    },
+  };
 }
 
 function emptyHoleScores() {
@@ -233,6 +246,23 @@ function migrateState(state) {
   // especiales (birdie/águila/etc.) ahora se integran dentro de cada
   // apuesta (individuales, foursome, skins, loba) con su propio monto.
   if (state.bets && state.bets.unidades) delete state.bets.unidades;
+
+  // hcp pasó de ser un solo número por jugador a un hándicap independiente
+  // por modalidad (individuales/foursome/skins/loba/stableford). Migramos
+  // usando el valor viejo como punto de partida para las 5 modalidades,
+  // así nadie pierde su hándicap configurado de golpe.
+  state.players.forEach((p) => {
+    if (typeof p.hcp === "number") {
+      const valorViejo = p.hcp;
+      p.hcp = {
+        individuales: valorViejo,
+        foursome: valorViejo,
+        skins: valorViejo,
+        loba: valorViejo,
+        stableford: valorViejo,
+      };
+    }
+  });
 
   if (!state.courses) {
     const courses = defaultCourses();
