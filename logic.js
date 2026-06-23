@@ -685,30 +685,48 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
     const diffUnidades = unidadesPareja - unidadesTrio;
     const multiplicador = cfg.multiplicador || 1;
     const montoVigente = monto + acumulado;
-    // NOTA: el "×3" viene de la mecánica original de loba (siempre se
-    // mueven 3 unidades de apuesta en juego por cada unidad de diferencia:
-    // monto×3 cuando diff=1, equivalente a la regla confirmada por el
-    // usuario "gana pareja se lleva 300 con monto=100"). Con diff>1 (ganar
-    // el hoyo + birdie, etc.) escalamos linealmente: monto×3 por cada
-    // unidad de diferencia.
-    const totalBote = montoVigente * multiplicador * Math.abs(diffUnidades) * 3;
 
     let acumulaSiguiente = false;
-    if (diffUnidades > 0) {
-      const cadaUno = totalBote / pareja.length;
-      pareja.forEach((id) => (balances[id] += cadaUno));
-      trio.forEach((id) => (balances[id] -= totalBote / trio.length));
-      acumulado = 0;
-    } else if (diffUnidades < 0) {
-      const cadaUno = totalBote / trio.length;
-      trio.forEach((id) => (balances[id] += cadaUno));
-      pareja.forEach((id) => (balances[id] -= totalBote / pareja.length));
-      acumulado = 0;
-    } else {
+    let totalBote = 0; // solo informativo para el detalle; el pago real puede variar entre modo normal y "va solo"
+
+    if (diffUnidades === 0) {
       // empate total (golpe neto Y eventos especiales iguales): no se paga
       // nada, el monto base de este hoyo se acumula para el siguiente
       acumulaSiguiente = true;
       acumulado += monto * multiplicador;
+    } else if (vaSolo) {
+      // Modo "va solo" (1v4): SIN el ×3 ni división de bote. El monto por
+      // unidad de diferencia se cobra COMPLETO a cada uno de los 4, de
+      // forma independiente (igual patrón que Unidades/Banderas).
+      const montoPorUnidad = montoVigente * multiplicador * Math.abs(diffUnidades);
+      totalBote = montoPorUnidad * trio.length; // informativo: lo que se mueve en total
+      if (diffUnidades > 0) {
+        trio.forEach((o) => {
+          balances[cfg.loba] += montoPorUnidad;
+          balances[o] -= montoPorUnidad;
+        });
+      } else {
+        trio.forEach((o) => {
+          balances[cfg.loba] -= montoPorUnidad;
+          balances[o] += montoPorUnidad;
+        });
+      }
+      acumulado = 0;
+    } else {
+      // Modo normal (2v3): mecánica original de loba (siempre se mueven
+      // 3 × monto en total por cada unidad de diferencia, repartido entre
+      // los ganadores, sin importar cuál equipo gane).
+      totalBote = montoVigente * multiplicador * Math.abs(diffUnidades) * 3;
+      if (diffUnidades > 0) {
+        const cadaUno = totalBote / pareja.length;
+        pareja.forEach((id) => (balances[id] += cadaUno));
+        trio.forEach((id) => (balances[id] -= totalBote / trio.length));
+      } else {
+        const cadaUno = totalBote / trio.length;
+        trio.forEach((id) => (balances[id] += cadaUno));
+        pareja.forEach((id) => (balances[id] -= totalBote / pareja.length));
+      }
+      acumulado = 0;
     }
 
     detalle.push({
