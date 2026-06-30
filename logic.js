@@ -913,11 +913,12 @@ function calcResumenGeneral(state) {
     ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes))
     : [];
   foursomeResults.forEach((r) => {
-    // saldoTotal positivo = a favor de "base" (1+2), repartido entre los 2
-    const perBase = r.saldoTotal / 2;
-    r.base.forEach((id) => (balances[id] += perBase));
-    const perRival = -r.saldoTotal / 2;
-    r.rival.forEach((id) => (balances[id] += perRival));
+    // saldoTotal positivo = a favor de "base" (1+2). Cada jugador de la
+    // pareja COBRA EL MONTO COMPLETO del cruce, no se reparte entre los 2
+    // (confirmado con ejemplo numérico: si el cruce da $500 a favor de la
+    // base, CADA UNO de los 2 de la base cobra $500, no $250).
+    r.base.forEach((id) => (balances[id] += r.saldoTotal));
+    r.rival.forEach((id) => (balances[id] -= r.saldoTotal));
   });
 
   // Skins (hándicap propio de esta modalidad). totalesPorJugador ya es el

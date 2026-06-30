@@ -635,7 +635,10 @@ function renderHoleScreen(state, onChange) {
         const enRival = r.rival.includes(p.id);
         if (!enBase && !enRival) return;
         const rivalNames = (enBase ? r.rival : r.base).map((id) => playerName(state, id)).join("+");
-        const dinero = (enBase ? r.saldoTotal : -r.saldoTotal) / 2;
+        // Cada jugador de la pareja cobra el monto COMPLETO del cruce, sin
+        // dividir entre los 2 (confirmado: si la pareja gana $500 de
+        // diferencia, CADA UNO de los 2 cobra $500, no $250).
+        const dinero = enBase ? r.saldoTotal : -r.saldoTotal;
         const unidades = enBase ? r.totalUnidades : -r.totalUnidades;
         filas.push([`Foursome vs ${rivalNames}`, dinero, unidades]);
       });
@@ -1117,8 +1120,10 @@ function renderSummaryScreen(state, onChange) {
       return sum;
     }, 0);
     const fs = resumen.foursomeResults.reduce((sum, r) => {
-      if (r.base.includes(p.id)) return sum + r.saldoTotal / 2;
-      if (r.rival.includes(p.id)) return sum - r.saldoTotal / 2;
+      // Cada jugador de la pareja cobra el monto COMPLETO del cruce, sin
+      // dividir entre los 2 (confirmado por el usuario con ejemplo numérico).
+      if (r.base.includes(p.id)) return sum + r.saldoTotal;
+      if (r.rival.includes(p.id)) return sum - r.saldoTotal;
       return sum;
     }, 0);
     const sk = resumen.skinsResult.totalesPorJugador[p.id];
