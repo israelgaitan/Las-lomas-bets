@@ -761,7 +761,7 @@ function renderBetsScreen(state, onChange) {
           ${state.players.map((p) => `<option value="${p.id}">${p.name}</option>`).join("")}
         </select>
         <select data-role="b" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-          ${state.players.map((p) => `<option value="${p.id}">${p.name}</option>`).join("")}
+          ${state.players.map((p, i) => `<option value="${p.id}" ${i === 1 ? "selected" : ""}>${p.name}</option>`).join("")}
         </select>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -777,7 +777,10 @@ function renderBetsScreen(state, onChange) {
     const b = parseInt(addMatchRow.querySelector('[data-role="b"]').value);
     const montoIda = parseFloat(addMatchRow.querySelector('[data-role="monto-ida"]').value) || 0;
     const montoVuelta = parseFloat(addMatchRow.querySelector('[data-role="monto-vuelta"]').value) || 0;
-    if (a === b) return;
+    if (a === b) {
+      alert("Elige 2 jugadores distintos para crear el partido.");
+      return;
+    }
     state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta });
     onChange(state);
   });
