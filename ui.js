@@ -196,17 +196,24 @@ function renderConfigScreen(state, onChange) {
   /* ---- MONTOS ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Montos de las apuestas</h2>`));
 
+  const crucesFs = state.bets.foursome.crosses;
+  const idasIguales = crucesFs.every((c) => c.montoIda === crucesFs[0].montoIda);
+  const vueltasIguales = crucesFs.every((c) => c.montoVuelta === crucesFs[0].montoVuelta);
+  const fsIdaValue = idasIguales ? crucesFs[0].montoIda : "";
+  const fsVueltaValue = vueltasIguales ? crucesFs[0].montoVuelta : "";
+
   const betsCard = el(`
     <div class="card">
       <div class="field">
         <label>Foursome — $ por hoyo, hoyos 1-9 (igual para bola alta y baja)</label>
-        <input type="number" value="${state.bets.foursome.crosses[0].montoIda}" data-role="fs-ida" />
+        <input type="number" value="${fsIdaValue}" placeholder="${idasIguales ? "" : "Cruces con montos distintos"}" data-role="fs-ida" />
       </div>
       <div class="field">
         <label>Foursome — $ por hoyo, hoyos 10-18 (el que va perdiendo puede subirlo)</label>
-        <input type="number" value="${state.bets.foursome.crosses[0].montoVuelta}" data-role="fs-vuelta" />
+        <input type="number" value="${fsVueltaValue}" placeholder="${vueltasIguales ? "" : "Cruces con montos distintos"}" data-role="fs-vuelta" />
       </div>
-      <p class="help-text">Mismo monto para los 3 cruces de la pareja base. Editable por cruce en la pestaña Apuestas.</p>
+      <p class="help-text">${(idasIguales && vueltasIguales) ? "Mismo monto para los 3 cruces de la pareja base. Editable por cruce en la pestaña Apuestas." : "⚠️ Los 3 cruces tienen montos distintos (los ajustaste individualmente en Apuestas). Escribe aquí un número para forzarlos a todos por igual, o usa el botón de abajo para igualarlos al del primer cruce."}</p>
+      ${(!idasIguales || !vueltasIguales) ? `<button class="btn btn-ghost btn-small" data-role="fs-igualar" style="width:100%;margin-bottom:8px">Igualar los 3 cruces al del primero (${crucesFs[0].montoIda}/${crucesFs[0].montoVuelta})</button>` : ""}
 
       <div class="field">
         <label>Skins — $ por hoyo</label>
@@ -252,6 +259,18 @@ function renderConfigScreen(state, onChange) {
     onChange(state, { skipRender: true });
   });
   betsCard.querySelector('[data-role="fs-vuelta"]').addEventListener("change", () => onChange(state));
+  const igualarBtn = betsCard.querySelector('[data-role="fs-igualar"]');
+  if (igualarBtn) {
+    igualarBtn.addEventListener("click", () => {
+      const v1 = crucesFs[0].montoIda;
+      const v2 = crucesFs[0].montoVuelta;
+      state.bets.foursome.crosses.forEach((c) => {
+        c.montoIda = v1;
+        c.montoVuelta = v2;
+      });
+      onChange(state);
+    });
+  }
   betsCard.querySelector('[data-role="skins"]').addEventListener("input", (e) => {
     state.bets.skins.montoPorHoyo = parseFloat(e.target.value) || 0;
     onChange(state, { skipRender: true });

@@ -152,11 +152,14 @@ function generarTodosVsTodos(participantIds) {
  * Genera los 3 cruces de foursome a partir de la pareja "base" elegida.
  * Los otros 3 jugadores forman las 3 combinaciones posibles de parejas
  * (round-robin de 3), cada una enfrentando a la base.
- * Conserva los montos de cruces que ya existían con exactamente la misma
- * pareja rival (por id), y pone $0 en los cruces nuevos.
+ * Conserva los montos: si un cruce nuevo coincide exactamente con uno
+ * viejo (misma base y mismo rival), hereda su monto tal cual. Si no hay
+ * coincidencia exacta (ej: la base cambió por completo), hereda el monto
+ * del PRIMER cruce viejo disponible, para no resetear a $0 sin avisar —
+ * el usuario puede seguir ajustando cada cruce individualmente después.
  * @param {Array<number>} basePlayers - los 2 ids de la pareja base
  * @param {Array} allPlayers - lista completa de jugadores [{id,...}]
- * @param {Array} cruceViejos - cruces anteriores, para conservar montos si coinciden
+ * @param {Array} crucesViejos - cruces anteriores, para heredar montos
  * @returns {Array} 3 cruces {id, base, rival, montoIda, montoVuelta}
  */
 function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
@@ -171,6 +174,10 @@ function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
   const labels = ["A", "B", "C"];
 
   const mismaPareja = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
+  const montoPorDefecto =
+    crucesViejos && crucesViejos.length > 0
+      ? { montoIda: crucesViejos[0].montoIda, montoVuelta: crucesViejos[0].montoVuelta }
+      : { montoIda: 0, montoVuelta: 0 };
 
   return parejas.map((rival, i) => {
     const viejo = (crucesViejos || []).find((c) => mismaPareja(c.rival, rival) && mismaPareja(c.base, basePlayers));
@@ -178,8 +185,8 @@ function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
       id: labels[i],
       base: [...basePlayers],
       rival,
-      montoIda: viejo ? viejo.montoIda : 0,
-      montoVuelta: viejo ? viejo.montoVuelta : 0,
+      montoIda: viejo ? viejo.montoIda : montoPorDefecto.montoIda,
+      montoVuelta: viejo ? viejo.montoVuelta : montoPorDefecto.montoVuelta,
     };
   });
 }
@@ -882,10 +889,16 @@ function calcResumenGeneral(state) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
 
-  // Individuales (hándicap propio de esta modalidad)
-  const ventajasIndividuales = calcGolpesVentaja(players, course.strokeIndex, "individuales");
+  // Individuales (hándicap propio de esta modalidad). La ventaja se
+  // calcula POR PARTIDO, solo entre los 2 jugadores involucrados (el de
+  // menor hcp de ESOS 2 es la referencia), no contra el más bajo de todo
+  // el grupo — así cada 1v1 usa la diferencia real entre ambos rivales.
   const individualesResults = bets.individuales.enabled
-    ? bets.individuales.matches.map((m) => calcIndividual(m, scores, ventajasIndividuales, course.par, state.sandies, state.oyes))
+    ? bets.individuales.matches.map((m) => {
+        const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
+        const ventajasPartido = calcGolpesVentaja(jugadoresPartido, course.strokeIndex, "individuales");
+        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.oyes);
+      })
     : [];
   individualesResults.forEach((r) => {
     balances[r.a] += r.saldoA;
@@ -951,7 +964,7 @@ function calcResumenGeneral(state) {
   });
 
   return {
-    ventajas: ventajasIndividuales, // se mantiene por compatibilidad de nombre
+    ventajas: calcGolpesVentaja(players, course.strokeIndex, "individuales"), // ventaja del grupo completo, solo informativa
     individualesResults,
     foursomeResults,
     skinsResult,
