@@ -509,6 +509,39 @@ function renderHoleScreen(state, onChange) {
     wrap.appendChild(row);
   });
 
+  // Oyes de individuales: marcado manual por partido 1v1, solo en hoyos
+  // par 3. El ganador puede variar según el rival (ej: 1 le gana el oyes
+  // a 2, pero pierde el oyes contra 3), por eso es manual y no automático.
+  if (state.bets.individuales.enabled && isPar3 && state.bets.individuales.matches.length > 0) {
+    wrap.appendChild(el(`<p class="section-divider">Oyes de individuales (este hoyo)</p>`));
+    const oyesIndCard = el(`<div class="card"></div>`);
+    if (!state.individualesOyes[h]) state.individualesOyes[h] = {};
+    const cfgOyesInd = state.individualesOyes[h];
+    state.bets.individuales.matches.forEach((m) => {
+      const key = matchKey(m.a, m.b);
+      const nameA = playerName(state, m.a);
+      const nameB = playerName(state, m.b);
+      const valorActual = cfgOyesInd[key] || "";
+      const row = el(`
+        <div class="field" style="margin-bottom:10px">
+          <label>${nameA} vs ${nameB}</label>
+          <select data-match-key="${key}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+            <option value="" ${valorActual === "" ? "selected" : ""}>— sin marcar —</option>
+            <option value="${m.a}" ${String(valorActual) === String(m.a) ? "selected" : ""}>Gana ${nameA}</option>
+            <option value="${m.b}" ${String(valorActual) === String(m.b) ? "selected" : ""}>Gana ${nameB}</option>
+          </select>
+        </div>
+      `);
+      row.querySelector("select").addEventListener("change", (e) => {
+        if (e.target.value === "") delete cfgOyesInd[key];
+        else cfgOyesInd[key] = Number(e.target.value);
+        onChange(state);
+      });
+      oyesIndCard.appendChild(row);
+    });
+    wrap.appendChild(oyesIndCard);
+  }
+
   // Oyes de foursome: marcado manual por cruce, solo en hoyos par 3.
   // Reemplaza el conteo automático del botón Oyes individual para foursome.
   if (state.bets.foursome.enabled && isPar3) {

@@ -132,6 +132,15 @@ function golpeNeto(brutos, ventajas, playerId, holeIdx) {
  * @returns {Object} detalle hoyo a hoyo + saldo neto total del partido
  */
 /**
+ * Clave estable para identificar un partido 1v1 sin importar el orden en
+ * que vengan los ids (1,3) y (3,1) deben mapear a la misma clave. Se usa
+ * para guardar el ganador manual del oyes de individuales por hoyo.
+ */
+function matchKey(a, b) {
+  return Math.min(a, b) + "-" + Math.max(a, b);
+}
+
+/**
  * Genera todos los enfrentamientos posibles (round-robin) entre una lista
  * de jugadores participantes. Cada partido nuevo arranca en $0, editable
  * después uno por uno.
@@ -212,16 +221,22 @@ function contarEventosJugador(bruto, par, esSandy, esOyes) {
  * @param {Object} match - {a, b, montoIda, montoVuelta}
  * @param {Array<number>} par - par de cada hoyo de la cancha activa
  * @param {Object} sandies - { [playerId]: [18 booleanos] }
- * @param {Object} oyes - { [playerId]: [18 booleanos] }
+ * @param {Array} individualesOyesPorHoyo - 18 posiciones { [matchKey]: playerId
+ *   del ganador del oyes en ESE partido específico }, marcado MANUAL por
+ *   partido (solo aplica en hoyos par 3). El ganador del oyes puede variar
+ *   según el rival: ej. en 1 vs 2 gana el oyes el jugador 1, pero en 1 vs 3
+ *   gana el oyes el jugador 3 (quedó más cerca de la bandera que 1).
  * Cada jugador suma "unidades" en el hoyo: ganar el hoyo (golpe neto más
  * bajo) = 1 unidad, más 1 unidad por cada evento especial que logre
- * (birdie, águila, hoyo en uno, sandy, oyes). Se cobra la DIFERENCIA de
- * unidades entre los 2, multiplicada por el monto de esa vuelta.
+ * (birdie, águila, hoyo en uno, sandy), más 1 unidad si ganó el oyes
+ * manual de ESTE partido. Se cobra la DIFERENCIA de unidades entre los 2,
+ * multiplicada por el monto de esa vuelta.
  */
-function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
+function calcIndividual(match, brutos, ventajas, par, sandies, individualesOyesPorHoyo) {
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
   let holesCounted = 0;
+  const key = matchKey(match.a, match.b);
 
   for (let h = 0; h < 18; h++) {
     const na = golpeNeto(brutos, ventajas, match.a, h);
@@ -235,8 +250,8 @@ function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
     const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
 
     // unidades por eventos especiales (independiente de quién gane el hoyo)
-    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], oyes[match.a][h]);
-    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], oyes[match.b][h]);
+    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], false);
+    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], false);
 
     // unidad por ganar el hoyo (golpe neto más bajo)
     let unidadesA = eventosA;
@@ -252,6 +267,21 @@ function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
     // empate en golpe neto: nadie suma la unidad de "ganar el hoyo",
     // pero los eventos especiales de cada uno sí cuentan igual
 
+    // oyes manual de este partido (solo hoyos par 3): quien quedó más
+    // cerca de la bandera ENTRE ESTOS DOS jugadores específicos suma 1
+    // unidad extra. No es automático porque depende del rival.
+    let oyesGanador = null;
+    if (par[h] === 3) {
+      const marcado = (individualesOyesPorHoyo[h] || {})[key];
+      if (marcado === match.a) {
+        oyesGanador = match.a;
+        unidadesA += 1;
+      } else if (marcado === match.b) {
+        oyesGanador = match.b;
+        unidadesB += 1;
+      }
+    }
+
     holesCounted++;
     const diffUnidades = unidadesA - unidadesB;
     saldoA += diffUnidades * montoHoyo;
@@ -262,6 +292,7 @@ function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
       netoA: na,
       netoB: nb,
       ganadorHoyo,
+      oyesGanador,
       montoHoyo,
       unidadesA,
       unidadesB,
@@ -897,7 +928,7 @@ function calcResumenGeneral(state) {
     ? bets.individuales.matches.map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
         const ventajasPartido = calcGolpesVentaja(jugadoresPartido, course.strokeIndex, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.oyes);
+        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.individualesOyes);
       })
     : [];
   individualesResults.forEach((r) => {

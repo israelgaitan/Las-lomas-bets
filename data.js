@@ -185,6 +185,12 @@ function newState() {
     // Solo aplica en hoyos par 3; reemplaza el conteo automático de oyes
     // individual para la modalidad foursome específicamente.
     foursomeOyes: new Array(18).fill(null).map(() => ({})),
+    // oyes manual de individuales: por hoyo, quién ganó el oyes en CADA
+    // partido 1v1 (clave "menorId-mayorId" -> playerId del ganador | sin
+    // entrada = sin marcar). Solo aplica en hoyos par 3. El ganador puede
+    // variar según el rival: ej. 1 le gana el oyes a 2, pero 1 pierde el
+    // oyes contra 3 (3 quedó más cerca de la bandera que 1).
+    individualesOyes: new Array(18).fill(null).map(() => ({})),
     bets: {
       individuales: {
         enabled: true,
@@ -333,6 +339,9 @@ function migrateState(state) {
   }
   if (!state.foursomeOyes) {
     state.foursomeOyes = new Array(18).fill(null).map(() => ({}));
+  }
+  if (!state.individualesOyes) {
+    state.individualesOyes = new Array(18).fill(null).map(() => ({}));
   }
   if (!state.oyes) {
     state.oyes = {};
