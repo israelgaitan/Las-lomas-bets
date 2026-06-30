@@ -149,6 +149,42 @@ function generarTodosVsTodos(participantIds) {
 }
 
 /**
+ * Genera los 3 cruces de foursome a partir de la pareja "base" elegida.
+ * Los otros 3 jugadores forman las 3 combinaciones posibles de parejas
+ * (round-robin de 3), cada una enfrentando a la base.
+ * Conserva los montos de cruces que ya existían con exactamente la misma
+ * pareja rival (por id), y pone $0 en los cruces nuevos.
+ * @param {Array<number>} basePlayers - los 2 ids de la pareja base
+ * @param {Array} allPlayers - lista completa de jugadores [{id,...}]
+ * @param {Array} cruceViejos - cruces anteriores, para conservar montos si coinciden
+ * @returns {Array} 3 cruces {id, base, rival, montoIda, montoVuelta}
+ */
+function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
+  const otros = allPlayers.map((p) => p.id).filter((id) => !basePlayers.includes(id));
+  if (otros.length !== 3) return crucesViejos || []; // requiere exactamente 5 jugadores
+
+  const parejas = [
+    [otros[0], otros[1]],
+    [otros[0], otros[2]],
+    [otros[1], otros[2]],
+  ];
+  const labels = ["A", "B", "C"];
+
+  const mismaPareja = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
+
+  return parejas.map((rival, i) => {
+    const viejo = (crucesViejos || []).find((c) => mismaPareja(c.rival, rival) && mismaPareja(c.base, basePlayers));
+    return {
+      id: labels[i],
+      base: [...basePlayers],
+      rival,
+      montoIda: viejo ? viejo.montoIda : 0,
+      montoVuelta: viejo ? viejo.montoVuelta : 0,
+    };
+  });
+}
+
+/**
  * Cuenta cuántos eventos especiales (birdie, águila, hoyo en uno, sandy,
  * oyes) logró un jugador en un hoyo dado. Se usa para sumar "unidades"
  * dentro de individuales y foursome. No incluye "ganar el hoyo" — eso se
@@ -226,11 +262,14 @@ function calcIndividual(match, brutos, ventajas, par, sandies, oyes) {
     });
   }
 
+  const totalUnidades = holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
+
   return {
     ...match,
     holeResults,
     holesCounted,
     saldoA, // positivo = "a" va ganando dinero, negativo = "b" va ganando
+    totalUnidades, // positivo = "a" lleva más unidades, negativo = "b" lleva más
   };
 }
 
@@ -257,15 +296,19 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * @param {Object} ventajasCruce - golpes de ventaja SOLO para este cruce
  *   (de calcVentajasForusome), no los de calcGolpesVentaja individual.
  * @param {Array<number>} par - par de cada hoyo de la cancha activa
- * @param {Object} sandies, oyes - { [playerId]: [18 booleanos] }
+ * @param {Object} sandies - { [playerId]: [18 booleanos] }
+ * @param {Array} foursomeOyesPorHoyo - 18 posiciones { [crossId]: "base"|"rival"|null },
+ *   marcado MANUAL de quién ganó el oyes en cada hoyo par 3 para ESTE cruce
+ *   específico. Reemplaza el oyes individual automático para foursome.
  * Cada pareja suma "unidades" en el hoyo: ganar bola baja = 1, ganar bola
  * alta = 1, más 1 unidad por cada evento especial (birdie, águila, hoyo en
- * uno, sandy, oyes) de CUALQUIERA de los 2 jugadores de la pareja. Se
- * cobra la diferencia de unidades entre las 2 parejas, multiplicada por
- * el monto de esa vuelta.
+ * uno, sandy) de CUALQUIERA de los 2 jugadores de la pareja, más 1 unidad
+ * si su equipo ganó el oyes manual de este cruce en ese hoyo. Se cobra la
+ * diferencia de unidades entre las 2 parejas, multiplicada por el monto
+ * de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeOyesPorHoyo) {
   const holeResults = [];
   let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
@@ -291,12 +334,14 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
     const montoHoyo = h < 9 ? cross.montoIda : cross.montoVuelta;
 
     // eventos especiales de cualquiera de los 2 jugadores de cada pareja
+    // (esOyes=false siempre: el oyes en foursome se marca manual por cruce,
+    // no se toma del botón individual de cada jugador)
     const eventosBase = cross.base.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false),
       0
     );
     const eventosRival = cross.rival.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false),
       0
     );
 
@@ -306,6 +351,12 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
     else if (resultBaja === "rival") unidadesRival += 1;
     if (resultAlta === "base") unidadesBase += 1;
     else if (resultAlta === "rival") unidadesRival += 1;
+
+    // Oyes manual (solo aplica en par 3): reemplaza el oyes individual
+    // automático para foursome, se marca por cruce desde la tarjeta de hoyo.
+    const oyesGanador = par[h] === 3 ? (foursomeOyesPorHoyo[h] || {})[cross.id] : null;
+    if (oyesGanador === "base") unidadesBase += 1;
+    else if (oyesGanador === "rival") unidadesRival += 1;
 
     const diffUnidades = unidadesBase - unidadesRival;
     saldoTotal += diffUnidades * montoHoyo;
@@ -321,8 +372,11 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
       unidadesBase,
       unidadesRival,
       diffUnidades,
+      oyesGanador,
     });
   }
+
+  const totalUnidades = holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
 
   return {
     crossId: cross.id,
@@ -330,6 +384,7 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
     rival: cross.rival,
     holeResults,
     saldoTotal,
+    totalUnidades, // positivo = "base" lleva más unidades, negativo = "rival" lleva más
   };
 }
 
@@ -354,9 +409,14 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyes) {
 function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) {
   const porHoyo = [];
   const totalesPorJugador = {};
-  players.forEach((p) => (totalesPorJugador[p.id] = 0));
+  const unidadesPorJugador = {};
+  players.forEach((p) => {
+    totalesPorJugador[p.id] = 0;
+    unidadesPorJugador[p.id] = 0;
+  });
 
   let acumulado = 0; // extra acumulado por empates de 3+, se suma al monto base del siguiente hoyo
+  let unidadesAcumuladas = 0; // unidad de "ganar el hoyo" pendiente por empates de 3+, se suma cuando alguien finalmente gane
 
   for (let h = 0; h < 18; h++) {
     const netos = players
@@ -384,16 +444,27 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) 
       ganadores.forEach((id) => (totalesPorJugador[id] += repartoPorGanador));
       perdedores.forEach((id) => (totalesPorJugador[id] -= montoVigente));
 
+      // 1 ganador limpio = 1 unidad (+ las que vinieran acumuladas de
+      // empates de 3+ previos); 2 empatados = 0.5 unidad cada uno (+ la
+      // mitad de las acumuladas cada uno)
+      const unidadVigente = 1 + unidadesAcumuladas;
+      const unidadPorGanador = unidadVigente / ganadores.length;
+      ganadores.forEach((id) => (unidadesPorJugador[id] += unidadPorGanador));
+      unidadesAcumuladas = 0;
+
       entry.montoCadaGanador = repartoPorGanador;
       acumulado = 0;
     } else {
-      // 3+ empatan: nadie cobra, se acumula para el siguiente hoyo
+      // 3+ empatan: nadie cobra ni suma la unidad de "ganar el hoyo" todavía;
+      // tanto el dinero como la unidad se acumulan para el siguiente hoyo
       entry.acumulaSiguiente = true;
       acumulado = montoVigente;
+      unidadesAcumuladas += 1;
     }
 
     // Eventos especiales: cobran el monto base de skins (no el vigente con
     // acumulado) a cada uno de los demás, independiente de quién ganó el hoyo.
+    // Cada evento también suma 1 unidad al jugador que lo logró.
     const eventosHoyo = [];
     players.forEach((p) => {
       const cantEventos = contarEventosJugador(brutos[p.id][h], par[h], sandies[p.id][h], oyes[p.id][h]);
@@ -404,6 +475,7 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) 
           totalesPorJugador[p.id] += totalEvento;
           totalesPorJugador[o.id] -= totalEvento;
         });
+        unidadesPorJugador[p.id] += cantEventos;
         eventosHoyo.push({ playerId: p.id, cantidad: cantEventos, monto: totalEvento * otros.length });
       }
     });
@@ -412,7 +484,7 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) 
     porHoyo.push(entry);
   }
 
-  return { porHoyo, totalesPorJugador, montoPendiente: acumulado };
+  return { porHoyo, totalesPorJugador, unidadesPorJugador, montoPendiente: acumulado };
 }
 
 /* ----------------------------------------------------------
@@ -748,7 +820,19 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
     });
   }
 
-  return { detalle, balances };
+  // Unidades netas por jugador: en cada hoyo configurado y jugado, si el
+  // jugador estuvo en la "pareja" suma +diffUnidades, si estuvo en el
+  // "trio" suma -diffUnidades (sin multiplicador ni ×3, solo la diferencia
+  // cruda de unidades de ese hoyo).
+  const unidadesPorJugador = {};
+  players.forEach((p) => (unidadesPorJugador[p.id] = 0));
+  detalle.forEach((d) => {
+    if (!d.jugado) return;
+    d.pareja.forEach((id) => (unidadesPorJugador[id] += d.diffUnidades));
+    d.trio.forEach((id) => (unidadesPorJugador[id] -= d.diffUnidades));
+  });
+
+  return { detalle, balances, unidadesPorJugador };
 }
 
 /**
@@ -813,7 +897,7 @@ function calcResumenGeneral(state) {
     ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyes))
+    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes))
     : [];
   foursomeResults.forEach((r) => {
     // saldoTotal positivo = a favor de "base" (1+2), repartido entre los 2

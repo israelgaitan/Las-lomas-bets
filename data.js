@@ -180,6 +180,11 @@ function newState() {
     },
     // loba: por hoyo, quién es loba y a quién elige de compañero
     loba: emptyLobaHoyo(),
+    // oyes manual de foursome: por hoyo, qué equipo ganó el oyes en CADA
+    // cruce (id de cruce "A"/"B"/"C" -> "base" | "rival" | null).
+    // Solo aplica en hoyos par 3; reemplaza el conteo automático de oyes
+    // individual para la modalidad foursome específicamente.
+    foursomeOyes: new Array(18).fill(null).map(() => ({})),
     bets: {
       individuales: {
         enabled: true,
@@ -191,7 +196,10 @@ function newState() {
       },
       foursome: {
         enabled: true,
-        // 3 cruces fijos: 1+2 vs 3+4 / 1+2 vs 3+5 / 1+2 vs 4+5
+        // basePlayers: los 2 jugadores que son "la base" hoy (se rifan antes
+        // de jugar). Los 3 cruces se regeneran automáticamente contra las
+        // 3 combinaciones posibles de los otros 3 jugadores.
+        basePlayers: [1, 2],
         // montoIda: $ por hoyo (igual para bola alta y baja) en hoyos 1-9
         // montoVuelta: $ por hoyo (igual para bola alta y baja) en hoyos 10-18
         crosses: [
@@ -313,9 +321,18 @@ function migrateState(state) {
   if (!state.bets.banderas) {
     state.bets.banderas = { enabled: true, monto: 0 };
   }
+  if (!state.bets.foursome.basePlayers) {
+    // inferimos la base de los cruces ya existentes (todos comparten la
+    // misma pareja "base" hasta ahora); si no hay cruces, usamos 1+2 por defecto
+    const primerCruce = state.bets.foursome.crosses[0];
+    state.bets.foursome.basePlayers = primerCruce ? [...primerCruce.base] : [1, 2];
+  }
   if (!state.banderas) {
     state.banderas = {};
     state.players.forEach((p) => (state.banderas[p.id] = emptyBanderasFlags()));
+  }
+  if (!state.foursomeOyes) {
+    state.foursomeOyes = new Array(18).fill(null).map(() => ({}));
   }
   if (!state.oyes) {
     state.oyes = {};

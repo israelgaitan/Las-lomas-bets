@@ -155,6 +155,44 @@ function renderConfigScreen(state, onChange) {
   });
   wrap.appendChild(modalCard);
 
+  /* ---- PAREJA BASE DE FOURSOME ---- */
+  if (state.bets.foursome.enabled) {
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Pareja base de foursome</h2>`));
+    const baseCard = el(`
+      <div class="card">
+        <p class="card__subtitle" style="margin-bottom:8px">Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Base 1</label>
+            <select data-role="base1" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+              ${state.players.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[0] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label>Base 2</label>
+            <select data-role="base2" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+              ${state.players.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[1] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+      </div>
+    `);
+    function actualizarBase() {
+      const b1 = parseInt(baseCard.querySelector('[data-role="base1"]').value);
+      const b2 = parseInt(baseCard.querySelector('[data-role="base2"]').value);
+      if (b1 === b2) {
+        alert("Los 2 jugadores de la base deben ser distintos.");
+        return;
+      }
+      state.bets.foursome.basePlayers = [b1, b2];
+      state.bets.foursome.crosses = generarCrucesForusome([b1, b2], state.players, state.bets.foursome.crosses);
+      onChange(state);
+    }
+    baseCard.querySelector('[data-role="base1"]').addEventListener("change", actualizarBase);
+    baseCard.querySelector('[data-role="base2"]').addEventListener("change", actualizarBase);
+    wrap.appendChild(baseCard);
+  }
+
   /* ---- MONTOS ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Montos de las apuestas</h2>`));
 
@@ -168,7 +206,7 @@ function renderConfigScreen(state, onChange) {
         <label>Foursome — $ por hoyo, hoyos 10-18 (el que va perdiendo puede subirlo)</label>
         <input type="number" value="${state.bets.foursome.crosses[0].montoVuelta}" data-role="fs-vuelta" />
       </div>
-      <p class="help-text">Mismo monto para los 3 cruces (1+2 vs 3+4 / vs 3+5 / vs 4+5). Editable por cruce en la pestaña Apuestas.</p>
+      <p class="help-text">Mismo monto para los 3 cruces de la pareja base. Editable por cruce en la pestaña Apuestas.</p>
 
       <div class="field">
         <label>Skins — $ por hoyo</label>
@@ -452,6 +490,37 @@ function renderHoleScreen(state, onChange) {
     wrap.appendChild(row);
   });
 
+  // Oyes de foursome: marcado manual por cruce, solo en hoyos par 3.
+  // Reemplaza el conteo automático del botón Oyes individual para foursome.
+  if (state.bets.foursome.enabled && isPar3) {
+    wrap.appendChild(el(`<p class="section-divider">Oyes de foursome (este hoyo)</p>`));
+    const oyesCard = el(`<div class="card"></div>`);
+    if (!state.foursomeOyes[h]) state.foursomeOyes[h] = {};
+    const cfgOyes = state.foursomeOyes[h];
+    state.bets.foursome.crosses.forEach((cross) => {
+      const baseNames = cross.base.map((id) => playerName(state, id)).join("+");
+      const rivalNames = cross.rival.map((id) => playerName(state, id)).join("+");
+      const valorActual = cfgOyes[cross.id] || "";
+      const row = el(`
+        <div class="field" style="margin-bottom:10px">
+          <label>${baseNames} vs ${rivalNames}</label>
+          <select data-cross-id="${cross.id}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+            <option value="" ${valorActual === "" ? "selected" : ""}>— sin marcar —</option>
+            <option value="base" ${valorActual === "base" ? "selected" : ""}>Gana ${baseNames}</option>
+            <option value="rival" ${valorActual === "rival" ? "selected" : ""}>Gana ${rivalNames}</option>
+          </select>
+        </div>
+      `);
+      row.querySelector("select").addEventListener("change", (e) => {
+        if (e.target.value === "") delete cfgOyes[cross.id];
+        else cfgOyes[cross.id] = e.target.value;
+        onChange(state);
+      });
+      oyesCard.appendChild(row);
+    });
+    wrap.appendChild(oyesCard);
+  }
+
   // Loba: marcar manualmente quién es loba y su compañero en este hoyo
   if (state.bets.loba.enabled) {
     wrap.appendChild(el(`<p class="section-divider">Loba de este hoyo</p>`));
@@ -521,34 +590,54 @@ function renderHoleScreen(state, onChange) {
 
   const toggleBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:6px">Ver desglose por modalidad</button>`);
   const desgloseWrap = el(`<div style="display:none;margin-top:8px"></div>`);
+
+  function unidadesTxt(u) {
+    if (!u) return "";
+    const redondeado = Math.round(u * 10) / 10; // por los 0.5 de empates en skins
+    return ` (${redondeado > 0 ? "+" : ""}${redondeado}u)`;
+  }
+
   state.players.forEach((p) => {
-    const ind = resumenHasta.individualesResults.reduce((sum, r) => {
-      if (r.a === p.id) return sum + r.saldoA;
-      if (r.b === p.id) return sum - r.saldoA;
-      return sum;
-    }, 0);
-    const fs = resumenHasta.foursomeResults.reduce((sum, r) => {
-      if (r.base.includes(p.id)) return sum + r.saldoTotal / 2;
-      if (r.rival.includes(p.id)) return sum - r.saldoTotal / 2;
-      return sum;
-    }, 0);
-    const sk = resumenHasta.skinsResult.totalesPorJugador[p.id];
-    const lob = resumenHasta.lobaResult.balances[p.id];
-    const sf = resumenHasta.stablefordResult.balances[p.id] || 0;
-    const band = resumenHasta.banderasResult.balances[p.id] || 0;
-
     const filas = [];
-    if (state.bets.individuales.enabled) filas.push(["Individuales", ind]);
-    if (state.bets.foursome.enabled) filas.push(["Foursome", fs]);
-    if (state.bets.skins.enabled) filas.push(["Skins", sk]);
-    if (state.bets.loba.enabled) filas.push(["Loba", lob]);
-    if (state.bets.stableford.enabled) filas.push(["Stableford", sf]);
-    if (state.bets.banderas.enabled) filas.push(["Banderas", band]);
 
-    const filasHtml = filas.map(([label, val]) => `
+    if (state.bets.individuales.enabled) {
+      resumenHasta.individualesResults.forEach((r) => {
+        if (r.a !== p.id && r.b !== p.id) return;
+        const esA = r.a === p.id;
+        const rivalId = esA ? r.b : r.a;
+        const dinero = esA ? r.saldoA : -r.saldoA;
+        const unidades = esA ? r.totalUnidades : -r.totalUnidades;
+        filas.push([`vs ${playerName(state, rivalId)}`, dinero, unidades]);
+      });
+    }
+    if (state.bets.foursome.enabled) {
+      resumenHasta.foursomeResults.forEach((r) => {
+        const enBase = r.base.includes(p.id);
+        const enRival = r.rival.includes(p.id);
+        if (!enBase && !enRival) return;
+        const rivalNames = (enBase ? r.rival : r.base).map((id) => playerName(state, id)).join("+");
+        const dinero = (enBase ? r.saldoTotal : -r.saldoTotal) / 2;
+        const unidades = enBase ? r.totalUnidades : -r.totalUnidades;
+        filas.push([`Foursome vs ${rivalNames}`, dinero, unidades]);
+      });
+    }
+    if (state.bets.skins.enabled) {
+      filas.push(["Skins", resumenHasta.skinsResult.totalesPorJugador[p.id], resumenHasta.skinsResult.unidadesPorJugador[p.id]]);
+    }
+    if (state.bets.loba.enabled) {
+      filas.push(["Loba", resumenHasta.lobaResult.balances[p.id], resumenHasta.lobaResult.unidadesPorJugador[p.id]]);
+    }
+    if (state.bets.stableford.enabled) {
+      filas.push(["Stableford", resumenHasta.stablefordResult.balances[p.id] || 0, null]);
+    }
+    if (state.bets.banderas.enabled) {
+      filas.push(["Banderas", resumenHasta.banderasResult.balances[p.id] || 0, null]);
+    }
+
+    const filasHtml = filas.map(([label, val, unidades]) => `
       <div class="match-row" style="padding:3px 0">
         <span class="match-row__names" style="font-size:11px;opacity:0.7">${label}</span>
-        <span class="match-row__amount ${moneyClass(val)}" style="font-size:11px">${fmtMoney(val)}</span>
+        <span class="match-row__amount ${moneyClass(val)}" style="font-size:11px">${fmtMoney(val)}${unidadesTxt(unidades)}</span>
       </div>
     `).join("");
 
