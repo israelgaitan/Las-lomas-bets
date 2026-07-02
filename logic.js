@@ -202,11 +202,11 @@ function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
 
 /**
  * Cuenta cuántos eventos especiales (birdie, águila, hoyo en uno, sandy,
- * oyes) logró un jugador en un hoyo dado. Se usa para sumar "unidades"
- * dentro de individuales y foursome. No incluye "ganar el hoyo" — eso se
- * suma aparte en cada función que la usa.
+ * oyes, metida de afuera) logró un jugador en un hoyo dado. Se usa para
+ * sumar "unidades" dentro de individuales y foursome. No incluye "ganar
+ * el hoyo" — eso se suma aparte en cada función que la usa.
  */
-function contarEventosJugador(bruto, par, esSandy, esOyes) {
+function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
   if (bruto === null || bruto === undefined) return 0;
   let count = 0;
   if (bruto === 1) count++; // hoyo en uno
@@ -214,6 +214,7 @@ function contarEventosJugador(bruto, par, esSandy, esOyes) {
   if (bruto === par - 1) count++; // birdie
   if (esSandy) count++;
   if (esOyes && par === 3) count++;
+  if (esMetida) count++; // metida de afuera (chip-in)
   return count;
 }
 
@@ -226,13 +227,15 @@ function contarEventosJugador(bruto, par, esSandy, esOyes) {
  *   partido (solo aplica en hoyos par 3). El ganador del oyes puede variar
  *   según el rival: ej. en 1 vs 2 gana el oyes el jugador 1, pero en 1 vs 3
  *   gana el oyes el jugador 3 (quedó más cerca de la bandera que 1).
+ * @param {Object} metidas - { [playerId]: [18 booleanos] } metida de
+ *   afuera (chip-in) marcada manualmente, aplica en cualquier hoyo.
  * Cada jugador suma "unidades" en el hoyo: ganar el hoyo (golpe neto más
  * bajo) = 1 unidad, más 1 unidad por cada evento especial que logre
- * (birdie, águila, hoyo en uno, sandy), más 1 unidad si ganó el oyes
- * manual de ESTE partido. Se cobra la DIFERENCIA de unidades entre los 2,
- * multiplicada por el monto de esa vuelta.
+ * (birdie, águila, hoyo en uno, sandy, metida de afuera), más 1 unidad si
+ * ganó el oyes manual de ESTE partido. Se cobra la DIFERENCIA de unidades
+ * entre los 2, multiplicada por el monto de esa vuelta.
  */
-function calcIndividual(match, brutos, ventajas, par, sandies, individualesOyesPorHoyo) {
+function calcIndividual(match, brutos, ventajas, par, sandies, individualesOyesPorHoyo, metidas) {
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
   let holesCounted = 0;
@@ -250,8 +253,8 @@ function calcIndividual(match, brutos, ventajas, par, sandies, individualesOyesP
     const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
 
     // unidades por eventos especiales (independiente de quién gane el hoyo)
-    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], false);
-    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], false);
+    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], false, metidas[match.a][h]);
+    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], false, metidas[match.b][h]);
 
     // unidad por ganar el hoyo (golpe neto más bajo)
     let unidadesA = eventosA;
@@ -346,7 +349,7 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeOyesPorHoyo) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeOyesPorHoyo, metidas) {
   const holeResults = [];
   let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
@@ -375,11 +378,11 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeO
     // (esOyes=false siempre: el oyes en foursome se marca manual por cruce,
     // no se toma del botón individual de cada jugador)
     const eventosBase = cross.base.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
       0
     );
     const eventosRival = cross.rival.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
       0
     );
 
@@ -444,7 +447,7 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeO
  * Calcula los skins ganados/perdidos por cada jugador a través de los 18 hoyos.
  * @returns {Object} { porHoyo: [...], totalesPorJugador: {id: monto neto}, montoPendiente }
  */
-function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) {
+function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, metidas) {
   const porHoyo = [];
   const totalesPorJugador = {};
   const unidadesPorJugador = {};
@@ -505,7 +508,7 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes) 
     // Cada evento también suma 1 unidad al jugador que lo logró.
     const eventosHoyo = [];
     players.forEach((p) => {
-      const cantEventos = contarEventosJugador(brutos[p.id][h], par[h], sandies[p.id][h], oyes[p.id][h]);
+      const cantEventos = contarEventosJugador(brutos[p.id][h], par[h], sandies[p.id][h], oyes[p.id][h], metidas[p.id][h]);
       if (cantEventos > 0) {
         const otros = players.filter((o) => o.id !== p.id);
         const totalEvento = montoPorHoyo * cantEventos;
@@ -540,13 +543,14 @@ const EVENTOS = {
   BIRDIE: "Birdie",
   SANDY: "Sandy",
   OYES: "Oyes",
+  METIDA: "Metida de afuera",
 };
 
 /**
  * Detecta qué evento(s) logró un jugador en un hoyo dado (golpes brutos vs par).
  * @returns {Array<string>} lista de nombres de evento, puede tener varios (ej: hoyo en uno Y birdie no se solapan en la práctica, pero por si acaso devolvemos todos los que matcheen)
  */
-function detectarEventos(bruto, par, esSandy, esOyes) {
+function detectarEventos(bruto, par, esSandy, esOyes, esMetida) {
   const eventos = [];
   if (bruto === null || bruto === undefined) return eventos;
 
@@ -555,6 +559,7 @@ function detectarEventos(bruto, par, esSandy, esOyes) {
   if (bruto === par - 1) eventos.push(EVENTOS.BIRDIE);
   if (esSandy) eventos.push(EVENTOS.SANDY);
   if (esOyes && par === 3) eventos.push(EVENTOS.OYES);
+  if (esMetida) eventos.push(EVENTOS.METIDA);
 
   return eventos;
 }
@@ -736,7 +741,7 @@ function calcBanderas(players, banderasState, monto, participantIds) {
  * hoyo de loba configurado (igual que en skins).
  * @returns {Object} { detalle: [...por hoyo...], balances: {id: monto neto} }
  */
-function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes) {
+function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes, metidas) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
   const detalle = [];
@@ -771,11 +776,11 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 
     // eventos especiales de cualquiera de los jugadores de cada equipo
     const eventosPareja = pareja.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
     );
     const eventosTrio = trio.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h]),
+      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
     );
 
@@ -896,12 +901,15 @@ function calcResumenHastaHoyo(state, hastaHoyo) {
   };
 
   limpiarDesde(recortado.scores);
-  // sandies/oyes/banderas usan false/0 como "vacío", no null
+  // sandies/oyes/metidas/banderas usan false/0 como "vacío", no null
   Object.keys(recortado.sandies).forEach((id) => {
     for (let h = hastaHoyo; h < 18; h++) recortado.sandies[id][h] = false;
   });
   Object.keys(recortado.oyes).forEach((id) => {
     for (let h = hastaHoyo; h < 18; h++) recortado.oyes[id][h] = false;
+  });
+  Object.keys(recortado.metidas).forEach((id) => {
+    for (let h = hastaHoyo; h < 18; h++) recortado.metidas[id][h] = false;
   });
   Object.keys(recortado.banderas).forEach((id) => {
     for (let h = hastaHoyo; h < 18; h++) recortado.banderas[id][h] = { banderas: 0, threePutt: false };
@@ -928,7 +936,7 @@ function calcResumenGeneral(state) {
     ? bets.individuales.matches.map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
         const ventajasPartido = calcGolpesVentaja(jugadoresPartido, course.strokeIndex, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.individualesOyes);
+        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.individualesOyes, state.metidas);
       })
     : [];
   individualesResults.forEach((r) => {
@@ -941,7 +949,7 @@ function calcResumenGeneral(state) {
     ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes))
+    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas))
     : [];
   foursomeResults.forEach((r) => {
     // saldoTotal positivo = a favor de "base" (1+2). Cada jugador de la
@@ -957,7 +965,7 @@ function calcResumenGeneral(state) {
   // por birdie/águila/hoyo en uno/sandy/oyes.
   const ventajasSkins = calcGolpesVentaja(players, course.strokeIndex, "skins");
   const skinsResult = bets.skins.enabled
-    ? calcSkins(players, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes)
+    ? calcSkins(players, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes, state.metidas)
     : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
   players.forEach((p) => {
     balances[p.id] += skinsResult.totalesPorJugador[p.id];
@@ -968,7 +976,7 @@ function calcResumenGeneral(state) {
   // cualquiera de los jugadores del equipo.
   const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba", LOBA_HCP_PORCENTAJE);
   const lobaResult = bets.loba.enabled
-    ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes)
+    ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes, state.metidas)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
     balances[p.id] += lobaResult.balances[p.id];
@@ -1005,4 +1013,62 @@ function calcResumenGeneral(state) {
     banderasResult,
     balances,
   };
+}
+
+/* ----------------------------------------------------------
+   HISTORIAL: guardar el resultado de la ronda actual antes de resetear.
+   ---------------------------------------------------------- */
+
+/**
+ * Cierra la ronda actual y guarda su resultado en el historial permanente:
+ * - Le suma a cada amigo (identificado por friendId en el jugador de hoy)
+ *   el dinero que ganaste/perdiste contra él en INDIVIDUALES hoy, tomando
+ *   como referencia a state.miPlayerId.
+ * - Guarda una entrada en state.roundsHistory con tu saldo TOTAL del día
+ *   (todas las modalidades activas).
+ * Muta el state que recibe (friends y roundsHistory); no toca nada más.
+ * No hace nada si no hay ningún golpe registrado todavía.
+ * @returns {boolean} true si guardó algo, false si no había nada que guardar
+ */
+function archivarRonda(state) {
+  if (holesPlayedCount(state) === 0) return false;
+
+  const resumen = calcResumenGeneral(state);
+  const course = getActiveCourse(state);
+  const yo = state.miPlayerId;
+  const fecha = new Date().toISOString();
+
+  // 1. Individuales contra cada amigo (solo partidos donde juego yo)
+  if (state.bets.individuales.enabled) {
+    resumen.individualesResults.forEach((r) => {
+      if (r.a !== yo && r.b !== yo) return; // no soy parte de este partido
+      const rivalId = r.a === yo ? r.b : r.a;
+      const montoParaMi = r.a === yo ? r.saldoA : -r.saldoA;
+      const rivalPlayer = state.players.find((p) => p.id === rivalId);
+      if (!rivalPlayer || !rivalPlayer.friendId) return; // rival no ligado a un amigo guardado
+      const friend = state.friends.find((f) => f.id === rivalPlayer.friendId);
+      if (!friend) return;
+      friend.individualesTotal += montoParaMi;
+      friend.individualesHistorial.push({ fecha, monto: montoParaMi, courseName: course.name });
+    });
+  }
+
+  // 2. Saldo total del día (todas las modalidades activas), guardado en el historial general
+  state.roundsHistory.push({
+    id: "r" + Date.now(),
+    fecha,
+    courseName: course.name,
+    balanceYo: resumen.balances[yo] || 0,
+  });
+
+  return true;
+}
+
+function holesPlayedCount(state) {
+  let count = 0;
+  for (let h = 0; h < 18; h++) {
+    const any = state.players.some((p) => state.scores[p.id][h] !== null);
+    if (any) count++;
+  }
+  return count;
 }

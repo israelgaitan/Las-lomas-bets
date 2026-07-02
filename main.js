@@ -82,13 +82,22 @@
       </div>
     `);
     header.querySelector('[data-act="reset"]').addEventListener("click", () => {
-      const ok = confirm(
-        "¿Resetear todo? Se borrará TODA la información que metiste a mano: jugadores, hándicaps, montos de las 7 modalidades, participantes, golpes y marcas del juego. Las canchas (par y hándicap por hoyo) se conservan."
-      );
+      const hayDatos = holesPlayedCount(state) > 0;
+      const mensaje = hayDatos
+        ? "¿Resetear ronda? Antes de borrar, tu resultado de hoy (individuales contra tus amigos guardados + tu saldo total del día) se guarda automáticamente en el historial. Se borrará TODA la demás información que metiste a mano: jugadores, hándicaps, montos de las 7 modalidades, participantes, golpes y marcas del juego. Las canchas y tu lista de amigos se conservan."
+        : "¿Resetear todo? Se borrará TODA la información que metiste a mano: jugadores, hándicaps, montos de las 7 modalidades, participantes, golpes y marcas del juego. Las canchas y tu lista de amigos se conservan.";
+      const ok = confirm(mensaje);
       if (!ok) return;
+      if (hayDatos) archivarRonda(state);
       const coursesToKeep = state.courses;
+      const friendsToKeep = state.friends;
+      const historyToKeep = state.roundsHistory;
+      const miPlayerIdToKeep = state.miPlayerId;
       const fresh = newState();
       fresh.courses = coursesToKeep;
+      fresh.friends = friendsToKeep;
+      fresh.roundsHistory = historyToKeep;
+      fresh.miPlayerId = miPlayerIdToKeep;
       // si la cancha que estaba activa ya no existe (no debería pasar, pero
       // por seguridad), usamos la primera disponible
       fresh.round.courseId = coursesToKeep.some((c) => c.id === state.round.courseId)

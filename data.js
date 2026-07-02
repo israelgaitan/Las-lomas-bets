@@ -95,6 +95,11 @@ function defaultPlayer(id, name) {
   return {
     id,
     name,
+    // si este jugador de la ronda de hoy fue llenado eligiéndolo de "Mis
+    // amigos", aquí queda el id de ese amigo permanente (para poder sumar
+    // el resultado de individuales de hoy a su historial). null = nombre
+    // escrito a mano, no está ligado a ningún amigo guardado.
+    friendId: null,
     hcp: {
       individuales: 0,
       foursome: 0,
@@ -103,6 +108,21 @@ function defaultPlayer(id, name) {
       stableford: 0,
     },
   };
+}
+
+// Un "amigo" es un jugador guardado en la lista permanente (independiente
+// de la ronda de hoy), para no tener que retipear nombres cada vez.
+// biblia = número que el usuario ajusta a MANO después de cada ronda
+// (+1 si le ganó, -1 si le tocó dar más ventaja, etc). Es solo una
+// referencia visual: no se suma automático al hándicap del día, el
+// usuario decide cómo usarlo al llenar el hcp de cada modalidad.
+// individualesTotal = dinero acumulado en TODA la historia de individuales
+// jugadas contra este amigo, desde el punto de vista de "mí" (positivo =
+// este amigo me debe en total). Se actualiza solo al guardar una ronda al
+// historial (ver archivarRonda en logic.js). individualesHistorial guarda
+// el detalle ronda por ronda.
+function defaultFriend(id, name) {
+  return { id, name, biblia: 0, individualesTotal: 0, individualesHistorial: [] };
 }
 
 function emptyHoleScores() {
@@ -136,6 +156,16 @@ function newState() {
       currentHole: 1,
     },
     unit: 1000, // valor de la unidad de apuesta, en la moneda que sea
+    // lista permanente de amigos con los que juegas seguido (independiente
+    // de quién esté activo en la ronda de hoy). Ver defaultFriend().
+    friends: [],
+    // cuál de los 5 jugadores de la ronda eres TÚ. Se usa para saber, al
+    // guardar una ronda al historial, cuánto ganaste/perdiste contra cada
+    // amigo en individuales y cuál fue tu saldo total del día.
+    miPlayerId: 1,
+    // historial de rondas ya cerradas/guardadas (ver archivarRonda en
+    // logic.js): [{ id, fecha, courseName, balanceYo, desglose }]
+    roundsHistory: [],
     players: [
       defaultPlayer(1, "Jugador 1"),
       defaultPlayer(2, "Jugador 2"),
@@ -161,6 +191,15 @@ function newState() {
     },
     // oyes marcado manualmente (solo aplica en hoyos par 3): { [playerId]: [18 booleanos] }
     oyes: {
+      1: emptySandyFlags(),
+      2: emptySandyFlags(),
+      3: emptySandyFlags(),
+      4: emptySandyFlags(),
+      5: emptySandyFlags(),
+    },
+    // metida de afuera (chip-in) marcada manualmente, aplica en cualquier
+    // hoyo (no solo par 3): { [playerId]: [18 booleanos] }
+    metidas: {
       1: emptySandyFlags(),
       2: emptySandyFlags(),
       3: emptySandyFlags(),
@@ -347,6 +386,28 @@ function migrateState(state) {
     state.oyes = {};
     state.players.forEach((p) => (state.oyes[p.id] = emptySandyFlags()));
   }
+  if (!state.metidas) {
+    state.metidas = {};
+    state.players.forEach((p) => (state.metidas[p.id] = emptySandyFlags()));
+  }
+  if (!state.friends) {
+    state.friends = [];
+  }
+  // amigos guardados antes de esta versión no tenían individualesTotal/historial
+  state.friends.forEach((f) => {
+    if (f.individualesTotal === undefined) f.individualesTotal = 0;
+    if (!f.individualesHistorial) f.individualesHistorial = [];
+  });
+  if (state.miPlayerId === undefined) {
+    state.miPlayerId = state.players[0] ? state.players[0].id : 1;
+  }
+  if (!state.roundsHistory) {
+    state.roundsHistory = [];
+  }
+  // jugadores guardados antes de esta versión no tenían friendId
+  state.players.forEach((p) => {
+    if (p.friendId === undefined) p.friendId = null;
+  });
   if (!state.bets.individuales.participantes) {
     state.bets.individuales.participantes = state.players.map((p) => p.id);
   }

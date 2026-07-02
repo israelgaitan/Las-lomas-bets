@@ -29,15 +29,7 @@ function el(html) {
   return tpl.content.firstElementChild;
 }
 
-function holesPlayedCount(state) {
-  // un hoyo cuenta como "jugado" si al menos un jugador tiene golpe ahí
-  let count = 0;
-  for (let h = 0; h < 18; h++) {
-    const any = state.players.some((p) => state.scores[p.id][h] !== null);
-    if (any) count++;
-  }
-  return count;
-}
+// holesPlayedCount() ahora vive en logic.js (la necesita también archivarRonda)
 
 /* ============================================================
    PANTALLA: CONFIGURAR RONDA
@@ -84,9 +76,82 @@ function renderConfigScreen(state, onChange) {
     : `${course.name} todavía tiene una plantilla genérica de par y hándicap por hoyo. Ajústala abajo con su tarjeta oficial la primera vez que juegues ahí, para que los golpes de ventaja salgan correctos.`;
   wrap.appendChild(el(`<p class="help-text">${avisoTexto}</p>`));
 
+  /* ---- MIS AMIGOS (lista permanente + biblia) ---- */
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Mis amigos</h2>`));
+  wrap.appendChild(el(`<p class="help-text">Guarda aquí a la gente con la que juegas seguido. La "biblia" es un número que tú ajustas a mano (gana → sube o baja, según tu acuerdo) y queda guardado como referencia; el hándicap del día en "Jugadores y hándicap" siempre lo pones tú abajo.</p>`));
+
+  const friendsCard = el(`<div class="card"></div>`);
+  if (state.friends.length === 0) {
+    friendsCard.appendChild(el(`<p class="help-text" style="margin:0">Todavía no agregas amigos.</p>`));
+  } else {
+    state.friends
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((f) => {
+        const row = el(`
+          <div style="margin-bottom:10px">
+            <div class="field-row" style="align-items:center;gap:8px">
+              <input type="text" value="${f.name}" data-role="friend-name" style="flex:1;min-width:0;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:8px;padding:8px 10px;color:var(--crema)" />
+              <div class="stepper" style="flex-shrink:0">
+                <button class="stepper__btn" data-act="biblia-minus">−</button>
+                <span class="stepper__value" data-role="biblia-value" style="min-width:30px;text-align:center">${f.biblia > 0 ? "+" + f.biblia : f.biblia}</span>
+                <button class="stepper__btn" data-act="biblia-plus">+</button>
+              </div>
+              <button class="btn btn-ghost btn-small" data-act="delete-friend" style="padding:8px 10px;flex-shrink:0">✕</button>
+            </div>
+            <p class="help-text" style="margin:4px 0 0">Individuales histórico: <span class="${moneyClass(f.individualesTotal)}">${fmtMoney(f.individualesTotal)}</span></p>
+          </div>
+        `);
+        row.querySelector('[data-role="friend-name"]').addEventListener("input", (e) => {
+          f.name = e.target.value;
+          onChange(state, { skipRender: true });
+        });
+        row.querySelector('[data-act="biblia-minus"]').addEventListener("click", () => {
+          f.biblia -= 1;
+          onChange(state);
+        });
+        row.querySelector('[data-act="biblia-plus"]').addEventListener("click", () => {
+          f.biblia += 1;
+          onChange(state);
+        });
+        row.querySelector('[data-act="delete-friend"]').addEventListener("click", () => {
+          if (!confirm(`¿Borrar a ${f.name} de tu lista de amigos?`)) return;
+          state.friends = state.friends.filter((x) => x.id !== f.id);
+          onChange(state);
+        });
+        friendsCard.appendChild(row);
+      });
+  }
+  wrap.appendChild(friendsCard);
+  const addFriendBtn = el(`<button class="btn btn-ghost btn-small" data-role="add-friend" style="width:100%;margin-top:8px">+ Agregar amigo</button>`);
+  addFriendBtn.addEventListener("click", () => {
+    const name = prompt("Nombre del amigo:");
+    if (!name || !name.trim()) return;
+    state.friends.push(defaultFriend("f" + Date.now(), name.trim()));
+    onChange(state);
+  });
+  wrap.appendChild(addFriendBtn);
+
   /* ---- JUGADORES ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores y hándicap</h2>`));
   wrap.appendChild(el(`<p class="help-text">Cada jugador puede llevar un hándicap distinto por modalidad (ej: acuerdos históricos que no siguen el hcp oficial actual).</p>`));
+
+  const yoCard = el(`
+    <div class="card">
+      <div class="field">
+        <label>¿Cuál de estos 5 eres tú?</label>
+        <select data-role="yo-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+          ${state.players.map((p) => `<option value="${p.id}" ${state.miPlayerId === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+        </select>
+      </div>
+      <p class="help-text" style="margin:6px 0 0">Se usa para llevar tu historial de individuales contra cada amigo y tu saldo total por ronda (abajo en Resumen).</p>
+    </div>
+  `);
+  yoCard.querySelector('[data-role="yo-select"]').addEventListener("change", (e) => {
+    state.miPlayerId = parseInt(e.target.value);
+    onChange(state);
+  });
+  wrap.appendChild(yoCard);
 
   const HCP_MODALIDADES = [
     { key: "individuales", label: "Indiv." },
@@ -97,12 +162,24 @@ function renderConfigScreen(state, onChange) {
   ];
 
   state.players.forEach((p) => {
+    const friendOptions = state.friends
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((f) => `<option value="${f.id}" ${p.friendId === f.id ? "selected" : ""}>${f.name}${f.biblia !== 0 ? ` (biblia ${f.biblia > 0 ? "+" : ""}${f.biblia})` : ""}</option>`)
+      .join("");
     const card = el(`
       <div class="card">
         <div class="field">
           <label>Nombre</label>
           <input type="text" value="${p.name}" data-role="name" />
         </div>
+        ${state.friends.length > 0 ? `
+        <div class="field" style="margin-top:6px">
+          <select data-role="pick-friend" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:8px;color:var(--crema);font-size:13px">
+            <option value="">— elegir de mis amigos —</option>
+            ${friendOptions}
+          </select>
+        </div>` : ""}
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
           ${HCP_MODALIDADES.map((m) => `
             <div style="text-align:center">
@@ -116,8 +193,25 @@ function renderConfigScreen(state, onChange) {
     `);
     card.querySelector('[data-role="name"]').addEventListener("input", (e) => {
       p.name = e.target.value;
+      p.friendId = null; // editar el nombre a mano desliga de "mis amigos"
       onChange(state, { skipRender: true });
     });
+    const pickFriend = card.querySelector('[data-role="pick-friend"]');
+    if (pickFriend) {
+      pickFriend.addEventListener("change", (e) => {
+        if (e.target.value === "") {
+          p.friendId = null;
+          onChange(state);
+          return;
+        }
+        const friend = state.friends.find((f) => f.id === e.target.value);
+        if (friend) {
+          p.name = friend.name;
+          p.friendId = friend.id;
+          onChange(state);
+        }
+      });
+    }
     HCP_MODALIDADES.forEach((m) => {
       const input = card.querySelector(`[data-hcp-key="${m.key}"]`);
       input.addEventListener("input", (e) => {
@@ -219,13 +313,13 @@ function renderConfigScreen(state, onChange) {
         <label>Skins — $ por hoyo</label>
         <input type="number" value="${state.bets.skins.montoPorHoyo}" data-role="skins" />
       </div>
-      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes también cobra este monto a cada uno, además del bote por ganar el hoyo.</p>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/metida de afuera también cobra este monto a cada uno, además del bote por ganar el hoyo.</p>
 
       <div class="field">
         <label>Loba — $ base por jugador (se multiplica x3 y se reparte)</label>
         <input type="number" value="${state.bets.loba.monto}" data-role="loba" />
       </div>
-      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes de cualquiera del equipo suma 1 unidad extra a su favor.</p>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/metida de afuera de cualquiera del equipo suma 1 unidad extra a su favor.</p>
 
       <div class="field">
         <label>Stableford — $ premio ida (hoyos 1-9)</label>
@@ -410,6 +504,7 @@ function renderHoleScreen(state, onChange) {
     const bruto = state.scores[p.id][h];
     const isSandy = state.sandies[p.id][h];
     const isOyes = state.oyes[p.id][h];
+    const isMetida = state.metidas[p.id][h];
     const banderasCfg = state.banderas[p.id][h];
 
     const row = el(`
@@ -426,6 +521,7 @@ function renderHoleScreen(state, onChange) {
           <div class="event-toggles">
             <button class="event-toggle ${isSandy ? "active" : ""}" data-act="sandy">Sandy</button>
             ${isPar3 ? `<button class="event-toggle ${isOyes ? "active" : ""}" data-act="oyes">Oyes</button>` : ""}
+            <button class="event-toggle ${isMetida ? "active" : ""}" data-act="metida">Metida de afuera</button>
           </div>
         </div>
         ${state.bets.banderas.enabled && state.bets.banderas.participantes.includes(p.id) ? `
@@ -470,6 +566,10 @@ function renderHoleScreen(state, onChange) {
         onChange(state);
       });
     }
+    row.querySelector('[data-act="metida"]').addEventListener("click", () => {
+      state.metidas[p.id][h] = !state.metidas[p.id][h];
+      onChange(state);
+    });
     const banderasMinusBtn = row.querySelector('[data-act="banderas-minus"]');
     if (banderasMinusBtn) {
       banderasMinusBtn.addEventListener("click", () => {
@@ -496,7 +596,7 @@ function renderHoleScreen(state, onChange) {
 
     // Badges de eventos detectados automáticamente
     if (bruto !== null) {
-      const eventos = detectarEventos(bruto, par, isSandy, isOyes);
+      const eventos = detectarEventos(bruto, par, isSandy, isOyes, isMetida);
       if (eventos.length > 0) {
         const badges = el(`<div class="event-badges"></div>`);
         eventos.forEach((ev) => {
@@ -1187,6 +1287,33 @@ function renderSummaryScreen(state, onChange) {
     `));
   });
   wrap.appendChild(breakdown);
+
+  /* ---- HISTORIAL DE RONDAS GUARDADAS ---- */
+  if (state.roundsHistory.length > 0) {
+    const totalAcumulado = state.roundsHistory.reduce((sum, r) => sum + r.balanceYo, 0);
+    wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
+    const histCard = el(`<div class="card"></div>`);
+    histCard.appendChild(el(`
+      <div class="balance-row" style="border-bottom:1px solid var(--linea);margin-bottom:8px;padding-bottom:8px">
+        <span class="balance-row__name">Saldo acumulado (${state.roundsHistory.length} ronda${state.roundsHistory.length === 1 ? "" : "s"})</span>
+        <span class="balance-row__amount ${moneyClass(totalAcumulado)}">${fmtMoney(totalAcumulado)}</span>
+      </div>
+    `));
+    state.roundsHistory
+      .slice()
+      .reverse()
+      .forEach((r) => {
+        const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+        histCard.appendChild(el(`
+          <div class="match-row" style="padding:6px 0">
+            <span class="match-row__names" style="font-size:12px">${fechaFmt} · ${r.courseName}</span>
+            <span class="match-row__amount ${moneyClass(r.balanceYo)}" style="font-size:12px">${fmtMoney(r.balanceYo)}</span>
+          </div>
+        `));
+      });
+    wrap.appendChild(histCard);
+    wrap.appendChild(el(`<p class="help-text">Se guarda automáticamente cada vez que tocas "Resetear ronda" con golpes ya registrados.</p>`));
+  }
 
   return wrap;
 }
