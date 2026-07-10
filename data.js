@@ -30,9 +30,14 @@ const CANADAS_PAR = [4, 4, 3, 4, 5, 5, 4, 4, 3, 5, 4, 3, 4, 4, 4, 5, 3, 4];
 const CANADAS_STROKE_INDEX = [15, 1, 11, 3, 13, 5, 9, 7, 17, 4, 2, 14, 12, 10, 6, 8, 18, 16];
 
 // Par y ventaja REALES de Guadalajara Country Club (tarjeta oficial del
-// club, escrita a mano por el usuario y verificada). Par total 72.
+// club, confirmada con foto directa de la tarjeta el 2026-07-02: fila
+// "Ventaja Caballeros" hoyos 1-9 y 10-18). Par total 72.
 const GDLCC_PAR = [5, 4, 4, 3, 4, 4, 4, 3, 5, 4, 4, 5, 4, 4, 3, 4, 3, 5];
-const GDLCC_STROKE_INDEX = [17, 15, 1, 11, 3, 5, 9, 7, 13, 18, 4, 8, 2, 6, 12, 14, 10, 16];
+const GDLCC_STROKE_INDEX = [15, 13, 3, 17, 7, 1, 9, 11, 5, 12, 4, 8, 2, 6, 18, 14, 10, 16];
+// valor viejo (incorrecto) de GDLCC_STROKE_INDEX antes de la corrección de
+// arriba. Se usa solo en migrateState() para detectar y arreglar canchas
+// ya guardadas en el dispositivo del usuario que traigan este error.
+const GDLCC_STROKE_INDEX_VIEJO_INCORRECTO = [17, 15, 1, 11, 3, 5, 9, 7, 13, 18, 4, 8, 2, 6, 12, 14, 10, 16];
 
 // Par y ventaja REALES de Santa Anita Club (tarjeta oficial del club,
 // escrita a mano por el usuario y verificada). Par total 72.
@@ -334,7 +339,8 @@ function migrateState(state) {
     // plantilla genérica de cuando se creó, asumimos que nunca se editó.
     const realData = { lomas: { par: LAS_LOMAS_PAR, strokeIndex: LAS_LOMAS_STROKE_INDEX },
                         atlas: { par: ATLAS_PAR, strokeIndex: ATLAS_STROKE_INDEX },
-                        canadas: { par: CANADAS_PAR, strokeIndex: CANADAS_STROKE_INDEX } };
+                        canadas: { par: CANADAS_PAR, strokeIndex: CANADAS_STROKE_INDEX },
+                        gdlcc: { par: GDLCC_PAR, strokeIndex: GDLCC_STROKE_INDEX } };
     const arraysIguales = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
     state.courses.forEach((c) => {
@@ -345,6 +351,16 @@ function migrateState(state) {
       if (parEsGenerico) c.par = [...real.par];
       if (siEsGenerico) c.strokeIndex = [...real.strokeIndex];
     });
+
+    // Corrección puntual: Guadalajara CC se cargó originalmente con un
+    // stroke index equivocado (columnas cruzadas al transcribir la
+    // tarjeta). Si el dispositivo todavía trae ese valor viejo exacto (y
+    // el usuario no lo editó a mano desde entonces), lo actualizamos al
+    // correcto sin tocar nada más de su configuración.
+    const gdlccCourse = state.courses.find((c) => c.id === "gdlcc");
+    if (gdlccCourse && arraysIguales(gdlccCourse.strokeIndex, GDLCC_STROKE_INDEX_VIEJO_INCORRECTO)) {
+      gdlccCourse.strokeIndex = [...GDLCC_STROKE_INDEX];
+    }
 
     // Agregar canchas precargadas NUEVAS que el usuario todavía no tenga
     // en su lista (ej: se agregó Guadalajara CC después de que ya jugaba
