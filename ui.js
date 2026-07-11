@@ -767,13 +767,16 @@ function renderHoleScreen(state, onChange) {
         const enBase = r.base.includes(p.id);
         const enRival = r.rival.includes(p.id);
         if (!enBase && !enRival) return;
+        const miEquipo = enBase ? r.base : r.rival;
+        const companeroId = miEquipo.find((id) => id !== p.id);
+        const companeroNombre = companeroId !== undefined ? playerName(state, companeroId) : "";
         const rivalNames = (enBase ? r.rival : r.base).map((id) => playerName(state, id)).join("+");
         // Cada jugador de la pareja cobra el monto COMPLETO del cruce, sin
         // dividir entre los 2 (confirmado: si la pareja gana $500 de
         // diferencia, CADA UNO de los 2 cobra $500, no $250).
         const dinero = enBase ? r.saldoTotal : -r.saldoTotal;
         const unidades = enBase ? r.totalUnidades : -r.totalUnidades;
-        filas.push([`Foursome vs ${rivalNames}`, dinero, unidades]);
+        filas.push([`Foursome (con ${companeroNombre}) vs ${rivalNames}`, dinero, unidades]);
       });
     }
     if (state.bets.skins.enabled) {
