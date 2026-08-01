@@ -1245,30 +1245,69 @@ function renderSummaryScreen(state, onChange) {
     return wrap;
   }
 
-  // Marcador de golpes brutos: ida (hoyos 1-9), vuelta (hoyos 10-18), total.
-  // Si todavía no se juegan los 9 hoyos completos de una vuelta, se suma
-  // solo lo que lleva jugado hasta ahora (no se inventan golpes).
-  wrap.appendChild(el(`<p class="section-divider">Marcador (golpes brutos)</p>`));
-  const marcadorCard = el(`<div class="card"></div>`);
+  // Tarjeta de golf: hoyo por hoyo, con OUT/IN/TOT, como una tarjeta real.
+  // Colores: verde = bajo par, rojo = sobre par, blanco = par exacto.
+  // Scroll horizontal porque 18 columnas no caben en pantalla de celular.
+  wrap.appendChild(el(`<p class="section-divider">Tarjeta de golf</p>`));
+  const course = getActiveCourse(state);
+  const par = course.par;
+  const cellStyle = "min-width:28px;text-align:center;padding:6px 2px;font-family:var(--font-mono);font-size:12px;white-space:nowrap";
+  const headerCellStyle = cellStyle + ";opacity:0.6;font-size:10px";
+
+  const scoreColor = (bruto, parHoyo) => {
+    if (bruto === null || bruto === undefined) return "opacity:0.3";
+    if (bruto < parHoyo) return "color:#7ee787;font-weight:700"; // bajo par
+    if (bruto > parHoyo) return "color:#ff7b72"; // sobre par
+    return "color:var(--crema)"; // par exacto
+  };
+
+  const scrollWrap = el(`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px" class="card"></div>`);
+  const table = el(`<table style="border-collapse:collapse;width:100%"></table>`);
+
+  // fila de hoyos
+  const filaHoyos = el(`<tr></tr>`);
+  filaHoyos.appendChild(el(`<td style="${headerCellStyle};text-align:left;min-width:70px">Hoyo</td>`));
+  for (let h = 0; h < 18; h++) {
+    filaHoyos.appendChild(el(`<td style="${headerCellStyle}">${h + 1}</td>`));
+    if (h === 8) filaHoyos.appendChild(el(`<td style="${headerCellStyle};font-weight:700">OUT</td>`));
+  }
+  filaHoyos.appendChild(el(`<td style="${headerCellStyle};font-weight:700">IN</td>`));
+  filaHoyos.appendChild(el(`<td style="${headerCellStyle};font-weight:700">TOT</td>`));
+  table.appendChild(filaHoyos);
+
+  // fila de par
+  const filaPar = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
+  filaPar.appendChild(el(`<td style="${cellStyle};text-align:left;opacity:0.7">Par</td>`));
+  let parOut = 0, parIn = 0;
+  for (let h = 0; h < 18; h++) {
+    filaPar.appendChild(el(`<td style="${cellStyle};opacity:0.7">${par[h]}</td>`));
+    if (h < 9) parOut += par[h]; else parIn += par[h];
+    if (h === 8) filaPar.appendChild(el(`<td style="${cellStyle};opacity:0.7;font-weight:700">${parOut}</td>`));
+  }
+  filaPar.appendChild(el(`<td style="${cellStyle};opacity:0.7;font-weight:700">${parIn}</td>`));
+  filaPar.appendChild(el(`<td style="${cellStyle};opacity:0.7;font-weight:700">${parOut + parIn}</td>`));
+  table.appendChild(filaPar);
+
+  // una fila por jugador
   state.players.forEach((p) => {
+    const fila = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
+    fila.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600">${p.name}</td>`));
     const ida = sumaGolpesBrutos(state, p.id, 0, 9);
     const vuelta = sumaGolpesBrutos(state, p.id, 9, 18);
-    const total = ida.suma + vuelta.suma;
+    for (let h = 0; h < 18; h++) {
+      const bruto = state.scores[p.id][h];
+      fila.appendChild(el(`<td style="${cellStyle};${scoreColor(bruto, par[h])}">${bruto !== null && bruto !== undefined ? bruto : "—"}</td>`));
+      if (h === 8) fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${ida.jugados > 0 ? ida.suma : "—"}</td>`));
+    }
+    fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${vuelta.jugados > 0 ? vuelta.suma : "—"}</td>`));
     const totalJugados = ida.jugados + vuelta.jugados;
-    marcadorCard.appendChild(el(`
-      <div class="balance-row">
-        <span class="balance-row__name">${p.name}</span>
-        <span style="font-family:var(--font-mono);font-size:13px;opacity:0.85">
-          Ida ${ida.jugados > 0 ? ida.suma : "—"}${ida.jugados > 0 && ida.jugados < 9 ? ` (${ida.jugados}h)` : ""}
-          &nbsp;·&nbsp;
-          Vuelta ${vuelta.jugados > 0 ? vuelta.suma : "—"}${vuelta.jugados > 0 && vuelta.jugados < 9 ? ` (${vuelta.jugados}h)` : ""}
-          &nbsp;·&nbsp;
-          <strong>Total ${totalJugados > 0 ? total : "—"}</strong>
-        </span>
-      </div>
-    `));
+    fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${totalJugados > 0 ? ida.suma + vuelta.suma : "—"}</td>`));
+    table.appendChild(fila);
   });
-  wrap.appendChild(marcadorCard);
+
+  scrollWrap.appendChild(table);
+  wrap.appendChild(scrollWrap);
+  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.</p>`));
 
   wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
