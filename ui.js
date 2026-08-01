@@ -1216,6 +1216,19 @@ function renderBetsScreen(state, onChange) {
    PANTALLA: RESUMEN
    ============================================================ */
 
+function sumaGolpesBrutos(state, playerId, desde, hasta) {
+  let suma = 0;
+  let jugados = 0;
+  for (let h = desde; h < hasta; h++) {
+    const v = state.scores[playerId][h];
+    if (v !== null && v !== undefined) {
+      suma += v;
+      jugados++;
+    }
+  }
+  return { suma, jugados };
+}
+
 function renderSummaryScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const resumen = calcResumenGeneral(state);
@@ -1231,6 +1244,33 @@ function renderSummaryScreen(state, onChange) {
     `));
     return wrap;
   }
+
+  // Marcador de golpes brutos: ida (hoyos 1-9), vuelta (hoyos 10-18), total.
+  // Si todavía no se juegan los 9 hoyos completos de una vuelta, se suma
+  // solo lo que lleva jugado hasta ahora (no se inventan golpes).
+  wrap.appendChild(el(`<p class="section-divider">Marcador (golpes brutos)</p>`));
+  const marcadorCard = el(`<div class="card"></div>`);
+  state.players.forEach((p) => {
+    const ida = sumaGolpesBrutos(state, p.id, 0, 9);
+    const vuelta = sumaGolpesBrutos(state, p.id, 9, 18);
+    const total = ida.suma + vuelta.suma;
+    const totalJugados = ida.jugados + vuelta.jugados;
+    marcadorCard.appendChild(el(`
+      <div class="balance-row">
+        <span class="balance-row__name">${p.name}</span>
+        <span style="font-family:var(--font-mono);font-size:13px;opacity:0.85">
+          Ida ${ida.jugados > 0 ? ida.suma : "—"}${ida.jugados > 0 && ida.jugados < 9 ? ` (${ida.jugados}h)` : ""}
+          &nbsp;·&nbsp;
+          Vuelta ${vuelta.jugados > 0 ? vuelta.suma : "—"}${vuelta.jugados > 0 && vuelta.jugados < 9 ? ` (${vuelta.jugados}h)` : ""}
+          &nbsp;·&nbsp;
+          <strong>Total ${totalJugados > 0 ? total : "—"}</strong>
+        </span>
+      </div>
+    `));
+  });
+  wrap.appendChild(marcadorCard);
+
+  wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
   const sorted = [...state.players].sort(
     (a, b) => resumen.balances[b.id] - resumen.balances[a.id]
