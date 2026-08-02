@@ -543,7 +543,7 @@ const EVENTOS = {
   BIRDIE: "Birdie",
   SANDY: "Sandy",
   OYES: "Oyes",
-  METIDA: "Metida de afuera",
+  METIDA: "Unidad",
 };
 
 /**

@@ -313,13 +313,13 @@ function renderConfigScreen(state, onChange) {
         <label>Skins — $ por hoyo</label>
         <input type="number" value="${state.bets.skins.montoPorHoyo}" data-role="skins" />
       </div>
-      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/metida de afuera también cobra este monto a cada uno, además del bote por ganar el hoyo.</p>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/unidad también cobra este monto a cada uno, además del bote por ganar el hoyo.</p>
 
       <div class="field">
         <label>Loba — $ base por jugador (se multiplica x3 y se reparte)</label>
         <input type="number" value="${state.bets.loba.monto}" data-role="loba" />
       </div>
-      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/metida de afuera de cualquiera del equipo suma 1 unidad extra a su favor.</p>
+      <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/unidad de cualquiera del equipo suma 1 unidad extra a su favor.</p>
 
       <div class="field">
         <label>Stableford — $ premio ida (hoyos 1-9)</label>
@@ -521,7 +521,7 @@ function renderHoleScreen(state, onChange) {
           <div class="event-toggles">
             <button class="event-toggle ${isSandy ? "active" : ""}" data-act="sandy">Sandy</button>
             ${isPar3 ? `<button class="event-toggle ${isOyes ? "active" : ""}" data-act="oyes">Oyes</button>` : ""}
-            <button class="event-toggle ${isMetida ? "active" : ""}" data-act="metida">Metida de afuera</button>
+            <button class="event-toggle ${isMetida ? "active" : ""}" data-act="metida">Unidad</button>
           </div>
         </div>
         ${state.bets.banderas.enabled && state.bets.banderas.participantes.includes(p.id) ? `
