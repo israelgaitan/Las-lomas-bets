@@ -741,12 +741,63 @@ function calcBanderas(players, banderasState, monto, participantIds) {
  * hoyo de loba configurado (igual que en skins).
  * @returns {Object} { detalle: [...por hoyo...], balances: {id: monto neto} }
  */
+/**
+ * Reparte el dinero de una diferencia de unidades en Loba (ya sea por ganar
+ * el hoyo o por eventos especiales), usando el modo "va solo" (1v4, sin ×3)
+ * o el modo normal (2v3, siempre se mueven 3×monto en total).
+ * Muta balances directamente. unidadesDiff positivo = gana la pareja.
+ * @returns {number} totalBote movido (solo informativo)
+ */
+function pagarDiferenciaLoba(balances, unidadesDiff, montoBase, multiplicador, pareja, trio, vaSolo) {
+  if (unidadesDiff === 0) return 0;
+  let totalBote = 0;
+  if (vaSolo) {
+    const montoPorUnidad = montoBase * multiplicador * Math.abs(unidadesDiff);
+    totalBote = montoPorUnidad * trio.length;
+    const loba = pareja[0];
+    if (unidadesDiff > 0) {
+      trio.forEach((o) => {
+        balances[loba] += montoPorUnidad;
+        balances[o] -= montoPorUnidad;
+      });
+    } else {
+      trio.forEach((o) => {
+        balances[loba] -= montoPorUnidad;
+        balances[o] += montoPorUnidad;
+      });
+    }
+  } else {
+    totalBote = montoBase * multiplicador * Math.abs(unidadesDiff) * 3;
+    if (unidadesDiff > 0) {
+      const cadaUno = totalBote / pareja.length;
+      pareja.forEach((id) => (balances[id] += cadaUno));
+      trio.forEach((id) => (balances[id] -= totalBote / trio.length));
+    } else {
+      const cadaUno = totalBote / trio.length;
+      trio.forEach((id) => (balances[id] += cadaUno));
+      pareja.forEach((id) => (balances[id] -= totalBote / pareja.length));
+    }
+  }
+  return totalBote;
+}
+
+/**
+ * Loba: el bote de "quién gana el hoyo" (golpe neto, pareja vs trío) y los
+ * eventos especiales (birdie/águila/hoyo en uno/sandy/oyes/metida) son DOS
+ * cosas independientes:
+ * - El bote del hoyo SOLO se resuelve por golpe neto. Si empatan en golpe
+ *   neto, el monto base se acumula para el siguiente hoyo CONFIGURADO,
+ *   sin importar si alguien tuvo un evento especial ese hoyo.
+ * - Los eventos especiales se pagan aparte, de inmediato, ese mismo hoyo,
+ *   con el monto base (sin el acumulado) — igual que birdie/sandy pagan en
+ *   Individuales. Ganar el oyes no "rompe" el empate del bote del hoyo.
+ */
 function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes, metidas) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
   const detalle = [];
 
-  let acumulado = 0; // extra por empates, se suma al monto base del siguiente hoyo CONFIGURADO
+  let acumulado = 0; // extra por empates de GOLPE, se suma al monto base del siguiente hoyo CONFIGURADO
 
   for (let h = 0; h < 18; h++) {
     const cfg = lobaConfig[h];
@@ -773,8 +824,31 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 
     const mejorPareja = Math.min(...netosPareja);
     const mejorTrio = Math.min(...netosTrio);
+    const multiplicador = cfg.multiplicador || 1;
 
-    // eventos especiales de cualquiera de los jugadores de cada equipo
+    // 1. Bote del hoyo: SOLO por golpe neto, independiente de eventos.
+    let golpeGanador = null;
+    let boteHoyo = 0;
+    let acumulaSiguiente = false;
+    if (mejorPareja < mejorTrio) {
+      golpeGanador = "pareja";
+    } else if (mejorTrio < mejorPareja) {
+      golpeGanador = "trio";
+    }
+
+    if (golpeGanador === null) {
+      // empate en golpe neto: se acumula el monto base, sin importar eventos
+      acumulaSiguiente = true;
+      acumulado += monto * multiplicador;
+    } else {
+      const montoVigente = monto + acumulado;
+      const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
+      boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, multiplicador, pareja, trio, vaSolo);
+      acumulado = 0;
+    }
+
+    // 2. Eventos especiales: se pagan aparte y de inmediato, con el monto
+    // base (sin el acumulado del bote), sin afectar el empate/acumulado de arriba.
     const eventosPareja = pareja.reduce(
       (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
@@ -783,66 +857,12 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
     );
+    const diffEventos = eventosPareja - eventosTrio;
+    const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, multiplicador, pareja, trio, vaSolo);
 
-    let unidadesPareja = eventosPareja;
-    let unidadesTrio = eventosTrio;
-    let ganador = null;
-    if (mejorPareja < mejorTrio) {
-      ganador = "pareja";
-      unidadesPareja += 1;
-    } else if (mejorTrio < mejorPareja) {
-      ganador = "trio";
-      unidadesTrio += 1;
-    }
-    // empate en golpe neto: nadie suma la unidad de "ganar el hoyo",
-    // pero los eventos especiales de cada equipo sí cuentan igual
-
-    const diffUnidades = unidadesPareja - unidadesTrio;
-    const multiplicador = cfg.multiplicador || 1;
-    const montoVigente = monto + acumulado;
-
-    let acumulaSiguiente = false;
-    let totalBote = 0; // solo informativo para el detalle; el pago real puede variar entre modo normal y "va solo"
-
-    if (diffUnidades === 0) {
-      // empate total (golpe neto Y eventos especiales iguales): no se paga
-      // nada, el monto base de este hoyo se acumula para el siguiente
-      acumulaSiguiente = true;
-      acumulado += monto * multiplicador;
-    } else if (vaSolo) {
-      // Modo "va solo" (1v4): SIN el ×3 ni división de bote. El monto por
-      // unidad de diferencia se cobra COMPLETO a cada uno de los 4, de
-      // forma independiente (igual patrón que Unidades/Banderas).
-      const montoPorUnidad = montoVigente * multiplicador * Math.abs(diffUnidades);
-      totalBote = montoPorUnidad * trio.length; // informativo: lo que se mueve en total
-      if (diffUnidades > 0) {
-        trio.forEach((o) => {
-          balances[cfg.loba] += montoPorUnidad;
-          balances[o] -= montoPorUnidad;
-        });
-      } else {
-        trio.forEach((o) => {
-          balances[cfg.loba] -= montoPorUnidad;
-          balances[o] += montoPorUnidad;
-        });
-      }
-      acumulado = 0;
-    } else {
-      // Modo normal (2v3): mecánica original de loba (siempre se mueven
-      // 3 × monto en total por cada unidad de diferencia, repartido entre
-      // los ganadores, sin importar cuál equipo gane).
-      totalBote = montoVigente * multiplicador * Math.abs(diffUnidades) * 3;
-      if (diffUnidades > 0) {
-        const cadaUno = totalBote / pareja.length;
-        pareja.forEach((id) => (balances[id] += cadaUno));
-        trio.forEach((id) => (balances[id] -= totalBote / trio.length));
-      } else {
-        const cadaUno = totalBote / trio.length;
-        trio.forEach((id) => (balances[id] += cadaUno));
-        pareja.forEach((id) => (balances[id] -= totalBote / pareja.length));
-      }
-      acumulado = 0;
-    }
+    // diffUnidades combinado: solo informativo, para el contador de
+    // "unidades" que se ve en la app (golpe del hoyo + eventos juntos)
+    const diffUnidades = (golpeGanador === "pareja" ? 1 : golpeGanador === "trio" ? -1 : 0) + diffEventos;
 
     detalle.push({
       hole: h + 1,
@@ -853,12 +873,15 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       vaSolo,
       mejorPareja,
       mejorTrio,
-      ganador,
+      ganador: golpeGanador,
       multiplicador,
-      unidadesPareja,
-      unidadesTrio,
+      eventosPareja,
+      eventosTrio,
+      diffEventos,
+      unidadesPareja: (golpeGanador === "pareja" ? 1 : 0) + eventosPareja,
+      unidadesTrio: (golpeGanador === "trio" ? 1 : 0) + eventosTrio,
       diffUnidades,
-      totalBote,
+      totalBote: boteHoyo + boteEventos,
       acumulaSiguiente,
     });
   }
@@ -866,7 +889,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
   // Unidades netas por jugador: en cada hoyo configurado y jugado, si el
   // jugador estuvo en la "pareja" suma +diffUnidades, si estuvo en el
   // "trio" suma -diffUnidades (sin multiplicador ni ×3, solo la diferencia
-  // cruda de unidades de ese hoyo).
+  // cruda de unidades de ese hoyo, golpe + eventos juntos).
   const unidadesPorJugador = {};
   players.forEach((p) => (unidadesPorJugador[p.id] = 0));
   detalle.forEach((d) => {

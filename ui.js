@@ -1061,12 +1061,13 @@ function renderBetsScreen(state, onChange) {
       jugados.slice().reverse().forEach((d) => {
         const parejaNames = d.pareja.map((id) => playerName(state, id)).join(" + ") + (d.vaSolo ? " (solo)" : "");
         const trioNames = d.trio.map((id) => playerName(state, id)).join(" + ");
-        const ganadorTxt = d.ganador === "pareja" ? parejaNames : d.ganador === "trio" ? trioNames : (d.acumulaSiguiente ? "Empate, acumula" : "Empate");
+        const ganadorTxt = d.ganador === "pareja" ? parejaNames : d.ganador === "trio" ? trioNames : (d.acumulaSiguiente ? "Empate golpe, acumula" : "Empate");
+        const eventosTxt = d.diffEventos ? ` · eventos: ${d.diffEventos > 0 ? parejaNames : trioNames} +${Math.abs(d.diffEventos)}` : "";
         const multTxt = d.multiplicador > 1 ? ` (×${d.multiplicador})` : "";
         lobaCard.appendChild(el(`
           <div class="match-row">
             <span class="match-row__names">H${d.hole}${multTxt} · ${parejaNames} vs ${trioNames}</span>
-            <span class="match-row__amount" style="font-size:12px">${ganadorTxt}</span>
+            <span class="match-row__amount" style="font-size:12px">${ganadorTxt}${eventosTxt}</span>
           </div>
         `));
       });
