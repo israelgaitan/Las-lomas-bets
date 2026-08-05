@@ -786,18 +786,29 @@ function renderHoleScreen(state, onChange) {
       filas.push(["Loba", resumenHasta.lobaResult.balances[p.id], resumenHasta.lobaResult.unidadesPorJugador[p.id]]);
     }
     if (state.bets.stableford.enabled) {
-      filas.push(["Stableford", resumenHasta.stablefordResult.balances[p.id] || 0, null]);
+      // Aquí mostramos puntos acumulados, NO dinero: el premio de Stableford
+      // se paga hasta que se cierra la ida/vuelta/total completos, así que
+      // un "$" a mitad de ronda solo confundiría (parecería que ya perdiste
+      // dinero en ese hoyo cuando en realidad nada se ha cobrado todavía).
+      const t = resumenHasta.stablefordResult.totales[p.id];
+      const pts = t && t.total.jugados > 0 ? t.total.total : 0;
+      filas.push([`Stableford`, pts, null, "puntos"]);
     }
     if (state.bets.banderas.enabled) {
       filas.push(["Banderas", resumenHasta.banderasResult.balances[p.id] || 0, null]);
     }
 
-    const filasHtml = filas.map(([label, val, unidades]) => `
-      <div class="match-row" style="padding:3px 0">
-        <span class="match-row__names" style="font-size:11px;opacity:0.7">${label}</span>
-        <span class="match-row__amount ${moneyClass(val)}" style="font-size:11px">${fmtMoney(val)}${unidadesTxt(unidades)}</span>
-      </div>
-    `).join("");
+    const filasHtml = filas.map(([label, val, unidades, tipo]) => {
+      const esPuntos = tipo === "puntos";
+      const valorTxt = esPuntos ? `${val} pts` : fmtMoney(val);
+      const claseColor = esPuntos ? "" : moneyClass(val);
+      return `
+        <div class="match-row" style="padding:3px 0">
+          <span class="match-row__names" style="font-size:11px;opacity:0.7">${label}</span>
+          <span class="match-row__amount ${claseColor}" style="font-size:11px">${valorTxt}${unidadesTxt(unidades)}</span>
+        </div>
+      `;
+    }).join("");
 
     desgloseWrap.appendChild(el(`
       <div style="margin-bottom:10px">
@@ -1288,9 +1299,10 @@ function renderSummaryScreen(state, onChange) {
   filaPar.appendChild(el(`<td style="${cellStyle};opacity:0.7;font-weight:700">${parOut + parIn}</td>`));
   table.appendChild(filaPar);
 
-  // una fila por jugador
+  // una fila por jugador (golpes), y si Stableford está activo, una fila
+  // extra debajo con los puntos de ese jugador en cada hoyo
   state.players.forEach((p) => {
-    const fila = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
+    const fila = el(`<tr style="${state.bets.stableford.enabled ? "" : "border-bottom:1px solid var(--linea)"}"></tr>`);
     fila.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600">${p.name}</td>`));
     const ida = sumaGolpesBrutos(state, p.id, 0, 9);
     const vuelta = sumaGolpesBrutos(state, p.id, 9, 18);
@@ -1303,11 +1315,27 @@ function renderSummaryScreen(state, onChange) {
     const totalJugados = ida.jugados + vuelta.jugados;
     fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${totalJugados > 0 ? ida.suma + vuelta.suma : "—"}</td>`));
     table.appendChild(fila);
+
+    if (state.bets.stableford.enabled) {
+      const puntosCellStyle = cellStyle + ";opacity:0.65;font-size:10px";
+      const filaPts = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
+      filaPts.appendChild(el(`<td style="${puntosCellStyle};text-align:left">pts</td>`));
+      const puntosPorHoyo = resumen.stablefordResult.puntosPorHoyo[p.id];
+      const t = resumen.stablefordResult.totales[p.id];
+      for (let h = 0; h < 18; h++) {
+        const pts = puntosPorHoyo[h];
+        filaPts.appendChild(el(`<td style="${puntosCellStyle}">${pts !== null ? pts : "—"}</td>`));
+        if (h === 8) filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.ida.jugados > 0 ? t.ida.total : "—"}</td>`));
+      }
+      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.vuelta.jugados > 0 ? t.vuelta.total : "—"}</td>`));
+      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.total.jugados > 0 ? t.total.total : "—"}</td>`));
+      table.appendChild(filaPts);
+    }
   });
 
   scrollWrap.appendChild(table);
   wrap.appendChild(scrollWrap);
-  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.</p>`));
+  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.${state.bets.stableford.enabled ? " La fila \"pts\" son los puntos Stableford de cada hoyo." : ""}</p>`));
 
   wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
