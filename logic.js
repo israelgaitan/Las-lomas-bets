@@ -349,7 +349,7 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeOyesPorHoyo, metidas) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeOyesPorHoyo, metidas, contarEventos) {
   const holeResults = [];
   let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
@@ -376,15 +376,21 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeO
 
     // eventos especiales de cualquiera de los 2 jugadores de cada pareja
     // (esOyes=false siempre: el oyes en foursome se marca manual por cruce,
-    // no se toma del botón individual de cada jugador)
-    const eventosBase = cross.base.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
-      0
-    );
-    const eventosRival = cross.rival.reduce(
-      (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
-      0
-    );
+    // no se toma del botón individual de cada jugador). Si contarEventos
+    // está apagado, el foursome se juega SOLO con bola alta/baja (+ oyes
+    // manual), sin sumar unidades extra por birdie/águila/sandy/metida.
+    const eventosBase = contarEventos
+      ? cross.base.reduce(
+          (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
+          0
+        )
+      : 0;
+    const eventosRival = contarEventos
+      ? cross.rival.reduce(
+          (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
+          0
+        )
+      : 0;
 
     let unidadesBase = eventosBase;
     let unidadesRival = eventosRival;
@@ -972,7 +978,7 @@ function calcResumenGeneral(state) {
     ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas))
+    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas))
     : [];
   foursomeResults.forEach((r) => {
     // saldoTotal positivo = a favor de "base" (1+2). Cada jugador de la

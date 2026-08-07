@@ -246,6 +246,10 @@ function newState() {
       },
       foursome: {
         enabled: true,
+        // si es false, el foursome se juega SOLO con bola alta y bola baja
+        // (y el oyes manual, si aplica); no se suman unidades extra por
+        // birdie/águila/hoyo en uno/sandy/metida de ningún jugador.
+        unidadesActivas: true,
         // basePlayers: los 2 jugadores que son "la base" hoy (se rifan antes
         // de jugar). Los 3 cruces se regeneran automáticamente contra las
         // 3 combinaciones posibles de los otros 3 jugadores.
@@ -387,6 +391,10 @@ function migrateState(state) {
     // misma pareja "base" hasta ahora); si no hay cruces, usamos 1+2 por defecto
     const primerCruce = state.bets.foursome.crosses[0];
     state.bets.foursome.basePlayers = primerCruce ? [...primerCruce.base] : [1, 2];
+  }
+  if (state.bets.foursome.unidadesActivas === undefined) {
+    // default true para no cambiarle el juego a nadie que ya lo tenía configurado
+    state.bets.foursome.unidadesActivas = true;
   }
   if (!state.banderas) {
     state.banderas = {};

@@ -285,6 +285,21 @@ function renderConfigScreen(state, onChange) {
     baseCard.querySelector('[data-role="base1"]').addEventListener("change", actualizarBase);
     baseCard.querySelector('[data-role="base2"]').addEventListener("change", actualizarBase);
     wrap.appendChild(baseCard);
+
+    const unidadesCard = el(`
+      <div class="card" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" data-role="fs-unidades" ${state.bets.foursome.unidadesActivas ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+          <span>Contar birdie/águila/hoyo en uno/sandy/metida como unidades extra</span>
+        </label>
+        <p class="help-text" style="margin:6px 0 0">Si lo apagas, el foursome se juega SOLO con bola alta y bola baja (más el oyes manual del hoyo, si aplica) — sin sumar puntos extra por esos eventos.</p>
+      </div>
+    `);
+    unidadesCard.querySelector('[data-role="fs-unidades"]').addEventListener("change", (e) => {
+      state.bets.foursome.unidadesActivas = e.target.checked;
+      onChange(state);
+    });
+    wrap.appendChild(unidadesCard);
   }
 
   /* ---- MONTOS ---- */
