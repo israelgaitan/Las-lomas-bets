@@ -1020,7 +1020,7 @@ function calcResumenGeneral(state) {
   // Loba (hándicap propio de esta modalidad, además recortado al 80%).
   // Incluye además el cobro por birdie/águila/hoyo en uno/sandy/oyes de
   // cualquiera de los jugadores del equipo.
-  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba", LOBA_HCP_PORCENTAJE);
+  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba", bets.loba.porcentajeHcp || 0.8);
   const lobaResult = bets.loba.enabled
     ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes, state.metidas)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };

@@ -337,6 +337,15 @@ function renderConfigScreen(state, onChange) {
       <p class="help-text" style="margin-top:-6px">Cada birdie/águila/hoyo en uno/sandy/oyes/unidad de cualquiera del equipo suma 1 unidad extra a su favor.</p>
 
       <div class="field">
+        <label>Loba — % de hándicap para repartir ventaja</label>
+        <select data-role="loba-pct" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+          <option value="0.8" ${state.bets.loba.porcentajeHcp === 0.8 ? "selected" : ""}>80% (como se venía jugando)</option>
+          <option value="1" ${state.bets.loba.porcentajeHcp === 1 ? "selected" : ""}>100% (igual que las demás modalidades)</option>
+        </select>
+      </div>
+      <p class="help-text" style="margin-top:-6px">La ventaja de Loba se calcula relativa al hándicap más bajo del grupo, recortado a este % antes de repartir golpes.</p>
+
+      <div class="field">
         <label>Stableford — $ premio ida (hoyos 1-9)</label>
         <input type="number" value="${state.bets.stableford.montoIda}" data-role="sf-ida" />
       </div>
@@ -390,6 +399,10 @@ function renderConfigScreen(state, onChange) {
     onChange(state, { skipRender: true });
   });
   betsCard.querySelector('[data-role="loba"]').addEventListener("change", () => onChange(state));
+  betsCard.querySelector('[data-role="loba-pct"]').addEventListener("change", (e) => {
+    state.bets.loba.porcentajeHcp = parseFloat(e.target.value);
+    onChange(state);
+  });
   betsCard.querySelector('[data-role="sf-ida"]').addEventListener("input", (e) => {
     state.bets.stableford.montoIda = parseFloat(e.target.value) || 0;
     onChange(state, { skipRender: true });
