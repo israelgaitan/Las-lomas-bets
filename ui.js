@@ -1066,6 +1066,13 @@ function renderBetsScreen(state, onChange) {
           <label>$ base por jugador (se multiplica x3 y se reparte)</label>
           <input type="number" value="${state.bets.loba.monto}" data-role="monto" />
         </div>
+        <div class="field" style="margin-top:8px">
+          <label>% de hándicap para repartir ventaja</label>
+          <select data-role="pct" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+            <option value="0.8" ${state.bets.loba.porcentajeHcp === 0.8 ? "selected" : ""}>80% (como se venía jugando)</option>
+            <option value="1" ${state.bets.loba.porcentajeHcp === 1 ? "selected" : ""}>100% (igual que las demás modalidades)</option>
+          </select>
+        </div>
       </div>
     `);
     lobaCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
@@ -1073,6 +1080,10 @@ function renderBetsScreen(state, onChange) {
       onChange(state, { skipRender: true });
     });
     lobaCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
+    lobaCard.querySelector('[data-role="pct"]').addEventListener("change", (e) => {
+      state.bets.loba.porcentajeHcp = parseFloat(e.target.value);
+      onChange(state);
+    });
     state.players.forEach((p) => {
       const ganado = resumen.lobaResult.balances[p.id];
       lobaCard.appendChild(el(`
