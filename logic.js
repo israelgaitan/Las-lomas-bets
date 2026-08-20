@@ -848,13 +848,26 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       acumulado += monto * multiplicador;
     } else {
       const montoVigente = monto + acumulado;
-      const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
-      boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, multiplicador, pareja, trio, vaSolo);
+      // Yendo solo, el multiplicador significa RAYAS EXTRA por ganar el
+      // hoyo (ej: multiplicador 2 = 2 rayas), no un multiplicador de
+      // dinero — el monto de cada raya se queda fijo. En modo normal
+      // (2v3) el multiplicador sigue siendo multiplicador de dinero,
+      // como antes.
+      if (vaSolo) {
+        const unidadesGolpe = (golpeGanador === "pareja" ? 1 : -1) * multiplicador;
+        boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, 1, pareja, trio, vaSolo);
+      } else {
+        const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
+        boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, multiplicador, pareja, trio, vaSolo);
+      }
       acumulado = 0;
     }
 
     // 2. Eventos especiales: se pagan aparte y de inmediato, con el monto
-    // base (sin el acumulado del bote), sin afectar el empate/acumulado de arriba.
+    // base (sin el acumulado del bote), sin afectar el empate/acumulado de
+    // arriba. Yendo solo, cada evento SIEMPRE vale 1 raya fija (el
+    // multiplicador del hoyo no aplica al oyes/birdie/etc, solo a la raya
+    // de ganar el hoyo).
     const eventosPareja = pareja.reduce(
       (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
@@ -864,11 +877,15 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       0
     );
     const diffEventos = eventosPareja - eventosTrio;
-    const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, multiplicador, pareja, trio, vaSolo);
+    const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, vaSolo ? 1 : multiplicador, pareja, trio, vaSolo);
 
     // diffUnidades combinado: solo informativo, para el contador de
-    // "unidades" que se ve en la app (golpe del hoyo + eventos juntos)
-    const diffUnidades = (golpeGanador === "pareja" ? 1 : golpeGanador === "trio" ? -1 : 0) + diffEventos;
+    // "unidades" que se ve en la app (golpe del hoyo + eventos juntos).
+    // Yendo solo, el golpe cuenta como "multiplicador" rayas (igual que en
+    // el dinero); en modo normal sigue siendo 1 raya.
+    const unidadesGolpeInfo = vaSolo ? multiplicador : 1;
+    const diffUnidades =
+      (golpeGanador === "pareja" ? unidadesGolpeInfo : golpeGanador === "trio" ? -unidadesGolpeInfo : 0) + diffEventos;
 
     detalle.push({
       hole: h + 1,
