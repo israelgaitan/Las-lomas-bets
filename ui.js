@@ -251,21 +251,111 @@ function renderConfigScreen(state, onChange) {
 
   /* ---- PAREJA BASE DE FOURSOME ---- */
   if (state.bets.foursome.enabled) {
-    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Pareja base de foursome</h2>`));
-    const baseCard = el(`
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome</h2>`));
+
+    const participantesCard = el(`
       <div class="card">
-        <p class="card__subtitle" style="margin-bottom:8px">Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente.</p>
+        <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy?</p>
+      </div>
+    `);
+    state.players.forEach((p) => {
+      const checked = state.bets.foursome.participantes.includes(p.id);
+      const row = el(`
+        <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
+          <input type="checkbox" data-fs-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+          <span>${p.name}</span>
+        </label>
+      `);
+      row.querySelector("input").addEventListener("change", (e) => {
+        const id = p.id;
+        if (e.target.checked) {
+          if (!state.bets.foursome.participantes.includes(id)) state.bets.foursome.participantes.push(id);
+        } else {
+          state.bets.foursome.participantes = state.bets.foursome.participantes.filter((x) => x !== id);
+        }
+        const nParticipantes = state.bets.foursome.participantes.length;
+        if (nParticipantes !== 4 && nParticipantes !== 5) {
+          alert("Foursome necesita exactamente 4 o 5 participantes (4 = foursome normal, 5 = foursome cruzado).");
+          // revertir el check visualmente en el próximo render
+        }
+        if (nParticipantes !== 4) {
+          state.bets.foursome.rotarParejas = false;
+        } else if (state.bets.foursome.rotarParejas) {
+          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos);
+        }
+        // si la base ya no está dentro de los participantes, la reseteamos
+        // a los primeros 2 participantes disponibles
+        if (!state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[0]) ||
+            !state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[1])) {
+          state.bets.foursome.basePlayers = state.bets.foursome.participantes.slice(0, 2);
+        }
+        const jugadoresFoursome = state.players.filter((pl) => state.bets.foursome.participantes.includes(pl.id));
+        state.bets.foursome.crosses = generarCrucesForusome(state.bets.foursome.basePlayers, jugadoresFoursome, state.bets.foursome.crosses);
+        onChange(state);
+      });
+      participantesCard.appendChild(row);
+    });
+    const nParticipantesActual = state.bets.foursome.participantes.length;
+    participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${nParticipantesActual === 4 ? "4 seleccionados: foursome normal, un solo cruce 2 vs 2." : nParticipantesActual === 5 ? "5 seleccionados: foursome cruzado, 3 cruces contra las 3 combinaciones." : `⚠️ ${nParticipantesActual} seleccionados — elige exactamente 4 o 5.`}</p>`));
+    wrap.appendChild(participantesCard);
+
+    const jugadoresFoursomeActuales = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+
+    if (nParticipantesActual === 4) {
+      const rotarCard = el(`
+        <div class="card" style="margin-top:10px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" data-role="fs-rotar" ${state.bets.foursome.rotarParejas ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+            <span>Cambiar de pareja cada 6 hoyos</span>
+          </label>
+          <p class="help-text" style="margin:6px 0 0">Con esto cada quien juega 6 hoyos con cada uno de los otros 3, pasando por las 3 combinaciones posibles. Reemplaza la pareja base fija.</p>
+        </div>
+      `);
+      rotarCard.querySelector('[data-role="fs-rotar"]').addEventListener("change", (e) => {
+        state.bets.foursome.rotarParejas = e.target.checked;
+        if (e.target.checked) {
+          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos);
+        }
+        onChange(state);
+      });
+      wrap.appendChild(rotarCard);
+    }
+
+    if (state.bets.foursome.rotarParejas && nParticipantesActual === 4) {
+      const segCard = el(`<div class="card" style="margin-top:10px"></div>`);
+      const etiquetaHoyos = ["Hoyos 1-6", "Hoyos 7-12", "Hoyos 13-18"];
+      state.bets.foursome.segmentos.forEach((seg, i) => {
+        const baseNames = seg.base.map((id) => playerName(state, id)).join(" + ");
+        const rivalNames = seg.rival.map((id) => playerName(state, id)).join(" + ");
+        const row = el(`
+          <div class="field" style="${i > 0 ? "margin-top:12px;padding-top:12px;border-top:1px solid var(--linea)" : ""}">
+            <label>${etiquetaHoyos[i]}: ${baseNames} vs ${rivalNames}</label>
+            <input type="number" value="${seg.monto}" data-seg-monto="${seg.id}" placeholder="$ por hoyo" />
+          </div>
+        `);
+        row.querySelector("input").addEventListener("input", (e) => {
+          seg.monto = parseFloat(e.target.value) || 0;
+          onChange(state, { skipRender: true });
+        });
+        row.querySelector("input").addEventListener("change", () => onChange(state));
+        segCard.appendChild(row);
+      });
+      wrap.appendChild(segCard);
+    } else {
+    const baseCard = el(`
+      <div class="card" style="margin-top:10px">
+        <p class="card__subtitle" style="margin-bottom:8px">${nParticipantesActual === 4 ? "Elige quiénes son hoy una pareja; los otros 2 forman la pareja rival." : "Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente."}</p>
         <div class="field-row">
           <div class="field">
             <label>Base 1</label>
             <select data-role="base1" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-              ${state.players.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[0] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[0] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
             </select>
           </div>
           <div class="field">
             <label>Base 2</label>
             <select data-role="base2" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-              ${state.players.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[1] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[1] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
             </select>
           </div>
         </div>
@@ -279,12 +369,14 @@ function renderConfigScreen(state, onChange) {
         return;
       }
       state.bets.foursome.basePlayers = [b1, b2];
-      state.bets.foursome.crosses = generarCrucesForusome([b1, b2], state.players, state.bets.foursome.crosses);
+      const jugadoresFoursome = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+      state.bets.foursome.crosses = generarCrucesForusome([b1, b2], jugadoresFoursome, state.bets.foursome.crosses);
       onChange(state);
     }
     baseCard.querySelector('[data-role="base1"]').addEventListener("change", actualizarBase);
     baseCard.querySelector('[data-role="base2"]').addEventListener("change", actualizarBase);
     wrap.appendChild(baseCard);
+    }
 
     const unidadesCard = el(`
       <div class="card" style="margin-top:10px">
@@ -306,6 +398,7 @@ function renderConfigScreen(state, onChange) {
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Montos de las apuestas</h2>`));
 
   const crucesFs = state.bets.foursome.crosses;
+  const usaRotacionMontos = state.bets.foursome.rotarParejas && state.bets.foursome.participantes.length === 4;
   const idasIguales = crucesFs.every((c) => c.montoIda === crucesFs[0].montoIda);
   const vueltasIguales = crucesFs.every((c) => c.montoVuelta === crucesFs[0].montoVuelta);
   const fsIdaValue = idasIguales ? crucesFs[0].montoIda : "";
@@ -313,6 +406,7 @@ function renderConfigScreen(state, onChange) {
 
   const betsCard = el(`
     <div class="card">
+      ${usaRotacionMontos ? `<p class="help-text" style="margin-top:0">Estás jugando foursome con cambio de pareja cada 6 hoyos — el monto de cada segmento se edita más abajo en la sección "Foursome" o arriba en Config.</p>` : `
       <div class="field">
         <label>Foursome — $ por hoyo, hoyos 1-9 (igual para bola alta y baja)</label>
         <input type="number" value="${fsIdaValue}" placeholder="${idasIguales ? "" : "Cruces con montos distintos"}" data-role="fs-ida" />
@@ -323,6 +417,7 @@ function renderConfigScreen(state, onChange) {
       </div>
       <p class="help-text">${(idasIguales && vueltasIguales) ? "Mismo monto para los 3 cruces de la pareja base. Editable por cruce en la pestaña Apuestas." : "⚠️ Los 3 cruces tienen montos distintos (los ajustaste individualmente en Apuestas). Escribe aquí un número para forzarlos a todos por igual, o usa el botón de abajo para igualarlos al del primer cruce."}</p>
       ${(!idasIguales || !vueltasIguales) ? `<button class="btn btn-ghost btn-small" data-role="fs-igualar" style="width:100%;margin-bottom:8px">Igualar los 3 cruces al del primero (${crucesFs[0].montoIda}/${crucesFs[0].montoVuelta})</button>` : ""}
+      `}
 
       <div class="field">
         <label>Skins — $ por hoyo</label>
@@ -365,18 +460,24 @@ function renderConfigScreen(state, onChange) {
     </div>
   `);
 
-  betsCard.querySelector('[data-role="fs-ida"]').addEventListener("input", (e) => {
-    const v = parseFloat(e.target.value) || 0;
-    state.bets.foursome.crosses.forEach((c) => (c.montoIda = v));
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="fs-ida"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="fs-vuelta"]').addEventListener("input", (e) => {
-    const v = parseFloat(e.target.value) || 0;
-    state.bets.foursome.crosses.forEach((c) => (c.montoVuelta = v));
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="fs-vuelta"]').addEventListener("change", () => onChange(state));
+  const fsIdaInput = betsCard.querySelector('[data-role="fs-ida"]');
+  if (fsIdaInput) {
+    fsIdaInput.addEventListener("input", (e) => {
+      const v = parseFloat(e.target.value) || 0;
+      state.bets.foursome.crosses.forEach((c) => (c.montoIda = v));
+      onChange(state, { skipRender: true });
+    });
+    fsIdaInput.addEventListener("change", () => onChange(state));
+  }
+  const fsVueltaInput = betsCard.querySelector('[data-role="fs-vuelta"]');
+  if (fsVueltaInput) {
+    fsVueltaInput.addEventListener("input", (e) => {
+      const v = parseFloat(e.target.value) || 0;
+      state.bets.foursome.crosses.forEach((c) => (c.montoVuelta = v));
+      onChange(state, { skipRender: true });
+    });
+    fsVueltaInput.addEventListener("change", () => onChange(state));
+  }
   const igualarBtn = betsCard.querySelector('[data-role="fs-igualar"]');
   if (igualarBtn) {
     igualarBtn.addEventListener("click", () => {
@@ -670,14 +771,20 @@ function renderHoleScreen(state, onChange) {
     wrap.appendChild(oyesIndCard);
   }
 
-  // Oyes de foursome: marcado manual por cruce, solo en hoyos par 3.
-  // Reemplaza el conteo automático del botón Oyes individual para foursome.
+  // Oyes de foursome: marcado manual por cruce (o por segmento, si hay
+  // rotación de parejas), solo en hoyos par 3. Reemplaza el conteo
+  // automático del botón Oyes individual para foursome.
   if (state.bets.foursome.enabled && isPar3) {
+    const usaRotacion = state.bets.foursome.rotarParejas && state.bets.foursome.participantes.length === 4;
+    const fuentesOyesFs = usaRotacion
+      ? state.bets.foursome.segmentos.filter((seg) => h >= seg.desde && h < seg.hasta)
+      : state.bets.foursome.crosses;
+    if (fuentesOyesFs.length > 0) {
     wrap.appendChild(el(`<p class="section-divider">Oyes de foursome (este hoyo)</p>`));
     const oyesCard = el(`<div class="card"></div>`);
     if (!state.foursomeOyes[h]) state.foursomeOyes[h] = {};
     const cfgOyes = state.foursomeOyes[h];
-    state.bets.foursome.crosses.forEach((cross) => {
+    fuentesOyesFs.forEach((cross) => {
       const baseNames = cross.base.map((id) => playerName(state, id)).join("+");
       const rivalNames = cross.rival.map((id) => playerName(state, id)).join("+");
       const valorActual = cfgOyes[cross.id] || "";
@@ -699,6 +806,7 @@ function renderHoleScreen(state, onChange) {
       oyesCard.appendChild(row);
     });
     wrap.appendChild(oyesCard);
+    }
   }
 
   // Loba: marcar manualmente quién es loba y su compañero en este hoyo
@@ -807,8 +915,8 @@ function renderHoleScreen(state, onChange) {
         filas.push([`Foursome (con ${companeroNombre}) vs ${rivalNames}`, dinero, unidades]);
       });
     }
-    if (state.bets.skins.enabled) {
-      filas.push(["Skins", resumenHasta.skinsResult.totalesPorJugador[p.id], resumenHasta.skinsResult.unidadesPorJugador[p.id]]);
+    if (state.bets.skins.enabled && state.bets.skins.participantes.includes(p.id)) {
+      filas.push(["Skins", resumenHasta.skinsResult.totalesPorJugador[p.id] || 0, (resumenHasta.skinsResult.unidadesPorJugador || {})[p.id] || 0]);
     }
     if (state.bets.loba.enabled) {
       filas.push(["Loba", resumenHasta.lobaResult.balances[p.id], resumenHasta.lobaResult.unidadesPorJugador[p.id]]);
@@ -986,10 +1094,37 @@ function renderBetsScreen(state, onChange) {
 
   /* ---- FOURSOME ---- */
   if (state.bets.foursome.enabled) {
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome cruzado</h2>`));
+  const usaRotacionApuestas = state.bets.foursome.rotarParejas && state.bets.foursome.participantes.length === 4;
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">${usaRotacionApuestas ? "Foursome (cambio de pareja cada 6 hoyos)" : "Foursome cruzado"}</h2>`));
+  const etiquetaSegmento = { S1: "Hoyos 1-6", S2: "Hoyos 7-12", S3: "Hoyos 13-18" };
   resumen.foursomeResults.forEach((r) => {
     const baseNames = r.base.map((id) => playerName(state, id)).join(" + ");
     const rivalNames = r.rival.map((id) => playerName(state, id)).join(" + ");
+
+    if (usaRotacionApuestas) {
+      const seg = state.bets.foursome.segmentos.find((s) => s.id === r.crossId);
+      const card = el(`
+        <div class="card">
+          <p class="card__title">${etiquetaSegmento[seg.id] || seg.id}: ${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
+          <div class="field">
+            <label>$ por hoyo</label>
+            <input type="number" value="${seg.monto}" data-role="monto" />
+          </div>
+          <div class="match-row" style="border-top:1px solid var(--linea);padding-top:10px">
+            <span class="match-row__names">Saldo del segmento</span>
+            <span class="match-row__amount ${moneyClass(r.saldoTotal)}">${fmtMoney(Math.abs(r.saldoTotal))} ${r.saldoTotal === 0 ? "" : (r.saldoTotal > 0 ? "a favor de " + baseNames : "a favor de " + rivalNames)}</span>
+          </div>
+        </div>
+      `);
+      card.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
+        seg.monto = parseFloat(e.target.value) || 0;
+        onChange(state, { skipRender: true });
+      });
+      card.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
+      wrap.appendChild(card);
+      return;
+    }
+
     const cross = state.bets.foursome.crosses.find((c) => c.id === r.crossId);
 
     const card = el(`
@@ -1042,8 +1177,30 @@ function renderBetsScreen(state, onChange) {
     onChange(state, { skipRender: true });
   });
   skinsCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
+
+  skinsCard.appendChild(el(`<p class="help-text" style="margin:8px 0 4px">¿Quién juega skins hoy?</p>`));
   state.players.forEach((p) => {
-    const ganado = resumen.skinsResult.totalesPorJugador[p.id];
+    const checked = state.bets.skins.participantes.includes(p.id);
+    const row = el(`
+      <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
+        <input type="checkbox" data-skins-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+        <span>${p.name}</span>
+      </label>
+    `);
+    row.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        if (!state.bets.skins.participantes.includes(p.id)) state.bets.skins.participantes.push(p.id);
+      } else {
+        state.bets.skins.participantes = state.bets.skins.participantes.filter((x) => x !== p.id);
+      }
+      onChange(state);
+    });
+    skinsCard.appendChild(row);
+  });
+  skinsCard.appendChild(el(`<p class="help-text" style="margin:4px 0 8px">Cada hoyo ganado limpio lo pagan solo los demás participantes de skins. La ventaja se calcula entre ellos, no contra todo el grupo.</p>`));
+
+  state.players.filter((p) => state.bets.skins.participantes.includes(p.id)).forEach((p) => {
+    const ganado = resumen.skinsResult.totalesPorJugador[p.id] || 0;
     skinsCard.appendChild(el(`
       <div class="match-row">
         <span class="match-row__names">${p.name}</span>

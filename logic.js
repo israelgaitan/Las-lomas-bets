@@ -171,22 +171,146 @@ function generarTodosVsTodos(participantIds) {
  * @param {Array} crucesViejos - cruces anteriores, para heredar montos
  * @returns {Array} 3 cruces {id, base, rival, montoIda, montoVuelta}
  */
+/**
+ * Genera los 3 segmentos de "cambio de pareja cada 6 hoyos" a partir de
+ * EXACTAMENTE 4 jugadores. Con 4 jugadores [a,b,c,d] hay 3 combinaciones
+ * posibles de parejas 2v2, una por cada bloque de 6 hoyos, así cada quien
+ * termina jugando 6 hoyos con cada uno de los otros 3.
+ * @param {Array<number>} participantes - exactamente 4 ids
+ * @returns {Array} 3 segmentos {id, desde, hasta, base, rival, monto}
+ */
+function generarSegmentosRotacion(participantes, segmentosViejos) {
+  const [a, b, c, d] = participantes;
+  if (a === undefined || b === undefined || c === undefined || d === undefined) return segmentosViejos || [];
+  const montoViejo = segmentosViejos && segmentosViejos.length > 0 ? segmentosViejos[0].monto : 0;
+  return [
+    { id: "S1", desde: 0, hasta: 6, base: [a, b], rival: [c, d], monto: montoViejo },
+    { id: "S2", desde: 6, hasta: 12, base: [a, c], rival: [b, d], monto: montoViejo },
+    { id: "S3", desde: 12, hasta: 18, base: [a, d], rival: [b, c], monto: montoViejo },
+  ];
+}
+
+/**
+ * Como calcForusomeCross, pero para UN SEGMENTO de 6 hoyos dentro de un
+ * foursome con cambio de pareja: solo cuenta los hoyos [desde, hasta) del
+ * segmento, con un monto plano por hoyo (no ida/vuelta, porque los
+ * segmentos no respetan el corte de 9 hoyos).
+ */
+function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, foursomeOyesPorHoyo, metidas, contarEventos) {
+  const holeResults = [];
+  let saldoTotal = 0;
+
+  for (let h = 0; h < 18; h++) {
+    if (h < segmento.desde || h >= segmento.hasta) {
+      holeResults.push({ hole: h + 1, jugado: false, fueraDeSegmento: true });
+      continue;
+    }
+
+    const base = bolaAltaBaja(segmento.base, brutos, ventajasSegmento, h);
+    const rival = bolaAltaBaja(segmento.rival, brutos, ventajasSegmento, h);
+
+    if (base.alta === null || rival.alta === null) {
+      holeResults.push({ hole: h + 1, jugado: false });
+      continue;
+    }
+
+    let resultBaja = "empate";
+    if (base.baja < rival.baja) resultBaja = "base";
+    else if (base.baja > rival.baja) resultBaja = "rival";
+
+    let resultAlta = "empate";
+    if (base.alta < rival.alta) resultAlta = "base";
+    else if (base.alta > rival.alta) resultAlta = "rival";
+
+    const montoHoyo = segmento.monto;
+
+    const eventosBase = contarEventos
+      ? segmento.base.reduce(
+          (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
+          0
+        )
+      : 0;
+    const eventosRival = contarEventos
+      ? segmento.rival.reduce(
+          (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], false, metidas[id][h]),
+          0
+        )
+      : 0;
+
+    let unidadesBase = eventosBase;
+    let unidadesRival = eventosRival;
+    if (resultBaja === "base") unidadesBase += 1;
+    else if (resultBaja === "rival") unidadesRival += 1;
+    if (resultAlta === "base") unidadesBase += 1;
+    else if (resultAlta === "rival") unidadesRival += 1;
+
+    const oyesGanador = par[h] === 3 ? (foursomeOyesPorHoyo[h] || {})[segmento.id] : null;
+    if (oyesGanador === "base") unidadesBase += 1;
+    else if (oyesGanador === "rival") unidadesRival += 1;
+
+    const diffUnidades = unidadesBase - unidadesRival;
+    saldoTotal += diffUnidades * montoHoyo;
+
+    holeResults.push({
+      hole: h + 1,
+      jugado: true,
+      base,
+      rival,
+      resultAlta,
+      resultBaja,
+      montoHoyo,
+      unidadesBase,
+      unidadesRival,
+      diffUnidades,
+      oyesGanador,
+    });
+  }
+
+  const totalUnidades = holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
+
+  return {
+    crossId: segmento.id,
+    base: segmento.base,
+    rival: segmento.rival,
+    holeResults,
+    saldoTotal,
+    totalUnidades,
+  };
+}
+
+
+/**
+ * Genera los cruces de foursome a partir de la pareja "base" elegida y los
+ * demás PARTICIPANTES de foursome de hoy (allPlayers puede ser un
+ * subconjunto de los 5 jugadores de la ronda, ej: si hoy solo son 4).
+ * - Con 3 "otros" (5 participantes en total): foursome CRUZADO, genera los
+ *   3 cruces posibles (A/B/C) contra las 3 combinaciones de a 2.
+ * - Con 2 "otros" (4 participantes en total): foursome NORMAL, un solo
+ *   cruce 2 vs 2 (base contra esos 2, sin combinaciones).
+ */
 function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
   const otros = allPlayers.map((p) => p.id).filter((id) => !basePlayers.includes(id));
-  if (otros.length !== 3) return crucesViejos || []; // requiere exactamente 5 jugadores
-
-  const parejas = [
-    [otros[0], otros[1]],
-    [otros[0], otros[2]],
-    [otros[1], otros[2]],
-  ];
-  const labels = ["A", "B", "C"];
-
   const mismaPareja = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
   const montoPorDefecto =
     crucesViejos && crucesViejos.length > 0
       ? { montoIda: crucesViejos[0].montoIda, montoVuelta: crucesViejos[0].montoVuelta }
       : { montoIda: 0, montoVuelta: 0 };
+
+  let parejas;
+  if (otros.length === 3) {
+    parejas = [
+      [otros[0], otros[1]],
+      [otros[0], otros[2]],
+      [otros[1], otros[2]],
+    ];
+  } else if (otros.length === 2) {
+    // foursome normal (4 jugadores en total): un solo cruce, sin combinaciones
+    parejas = [otros];
+  } else {
+    return crucesViejos || []; // requiere exactamente 4 o 5 participantes
+  }
+
+  const labels = ["A", "B", "C"];
 
   return parejas.map((rival, i) => {
     const viejo = (crucesViejos || []).find((c) => mismaPareja(c.rival, rival) && mismaPareja(c.base, basePlayers));
@@ -990,12 +1114,20 @@ function calcResumenGeneral(state) {
     balances[r.b] -= r.saldoA;
   });
 
-  // Foursome (ventaja calculada por SUMA de hcp.foursome de cada pareja, no individual)
+  // Foursome (ventaja calculada por SUMA de hcp.foursome de cada pareja, no individual).
+  // Si rotarParejas está activo (y hay exactamente 4 participantes), se usa
+  // "segmentos" (3 bloques de 6 hoyos con pareja distinta) en vez de "crosses".
+  const usaRotacion = bets.foursome.enabled && bets.foursome.rotarParejas && bets.foursome.participantes.length === 4;
+  const fuentesForusome = usaRotacion ? bets.foursome.segmentos : bets.foursome.crosses;
   const ventajasForusome = bets.foursome.enabled
-    ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
+    ? calcVentajasForusome(players, course.strokeIndex, fuentesForusome)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? bets.foursome.crosses.map((c) => calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas))
+    ? fuentesForusome.map((c) =>
+        usaRotacion
+          ? calcForusomeSegmento(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas)
+          : calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas)
+      )
     : [];
   foursomeResults.forEach((r) => {
     // saldoTotal positivo = a favor de "base" (1+2). Cada jugador de la
@@ -1009,12 +1141,16 @@ function calcResumenGeneral(state) {
   // Skins (hándicap propio de esta modalidad). totalesPorJugador ya es el
   // balance neto: positivo gana, negativo paga. Incluye además el cobro
   // por birdie/águila/hoyo en uno/sandy/oyes.
-  const ventajasSkins = calcGolpesVentaja(players, course.strokeIndex, "skins");
-  const skinsResult = bets.skins.enabled
-    ? calcSkins(players, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes, state.metidas)
+  // Solo participan los jugadores marcados en bets.skins.participantes; la
+  // ventaja se calcula relativa al más bajo de ESE subgrupo, no del grupo
+  // completo, para que jugar skins entre 4 no dependa de quién no juega.
+  const jugadoresSkins = players.filter((p) => bets.skins.participantes.includes(p.id));
+  const ventajasSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
+  const skinsResult = bets.skins.enabled && jugadoresSkins.length >= 2
+    ? calcSkins(jugadoresSkins, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes, state.metidas)
     : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
   players.forEach((p) => {
-    balances[p.id] += skinsResult.totalesPorJugador[p.id];
+    balances[p.id] += skinsResult.totalesPorJugador[p.id] || 0;
   });
 
   // Loba (hándicap propio de esta modalidad, además recortado al 80%).

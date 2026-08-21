@@ -250,9 +250,13 @@ function newState() {
         // (y el oyes manual, si aplica); no se suman unidades extra por
         // birdie/águila/hoyo en uno/sandy/metida de ningún jugador.
         unidadesActivas: true,
+        // participantes: quiénes juegan foursome hoy. Con 5 -> foursome
+        // cruzado (3 cruces contra las 3 combinaciones de los otros 3).
+        // Con 4 -> foursome normal, un solo cruce 2 vs 2.
+        participantes: [1, 2, 3, 4, 5],
         // basePlayers: los 2 jugadores que son "la base" hoy (se rifan antes
-        // de jugar). Los 3 cruces se regeneran automáticamente contra las
-        // 3 combinaciones posibles de los otros 3 jugadores.
+        // de jugar). Los cruces se regeneran automáticamente contra los
+        // demás participantes.
         basePlayers: [1, 2],
         // montoIda: $ por hoyo (igual para bola alta y baja) en hoyos 1-9
         // montoVuelta: $ por hoyo (igual para bola alta y baja) en hoyos 10-18
@@ -261,10 +265,23 @@ function newState() {
           { id: "B", base: [1, 2], rival: [3, 5], montoIda: 0, montoVuelta: 0 },
           { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
         ],
+        // rotarParejas: solo aplica con EXACTAMENTE 4 participantes. En vez
+        // de 1 pareja fija los 18 hoyos, se cambia de pareja cada 6 hoyos,
+        // pasando por las 3 combinaciones posibles (así cada quien juega
+        // con cada quien 6 hoyos). Reemplaza a "crosses" mientras está activo.
+        rotarParejas: false,
+        segmentos: [
+          { id: "S1", desde: 0, hasta: 6, base: [1, 2], rival: [3, 4], monto: 0 },
+          { id: "S2", desde: 6, hasta: 12, base: [1, 3], rival: [2, 4], monto: 0 },
+          { id: "S3", desde: 12, hasta: 18, base: [1, 4], rival: [2, 3], monto: 0 },
+        ],
       },
       skins: {
         enabled: true,
         montoPorHoyo: 0,
+        // quiénes juegan skins hoy (por defecto los 5). Permite jugar
+        // skins solo entre algunos, sin tener que sacar a nadie de la ronda.
+        participantes: [1, 2, 3, 4, 5],
       },
       loba: {
         enabled: true,
@@ -404,6 +421,18 @@ function migrateState(state) {
   if (state.bets.loba.porcentajeHcp === undefined) {
     // default 0.8 (80%), que es como ya venía funcionando la app hasta ahora
     state.bets.loba.porcentajeHcp = 0.8;
+  }
+  if (!state.bets.foursome.participantes) {
+    state.bets.foursome.participantes = state.players.map((p) => p.id);
+  }
+  if (!state.bets.skins.participantes) {
+    state.bets.skins.participantes = state.players.map((p) => p.id);
+  }
+  if (state.bets.foursome.rotarParejas === undefined) {
+    state.bets.foursome.rotarParejas = false;
+  }
+  if (!state.bets.foursome.segmentos) {
+    state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes.slice(0, 4));
   }
   if (!state.banderas) {
     state.banderas = {};
