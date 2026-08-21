@@ -1089,32 +1089,53 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
  * No muta el state original.
  * @param {number} hastaHoyo - número de hoyo 1-18 (inclusive)
  */
-function calcResumenHastaHoyo(state, hastaHoyo) {
+/**
+ * Devuelve el orden real de juego (índices 0-based de hoyo) según por
+ * dónde arranca la ronda. Con hoyoInicial=1: [0,1,...,17] (normal). Con
+ * hoyoInicial=10: [9,10,...,17,0,1,...,8] (sale por el 10, da la vuelta).
+ */
+function ordenDeJuego(hoyoInicial) {
+  const inicio = (hoyoInicial || 1) - 1;
+  const orden = [];
+  for (let i = 0; i < 18; i++) orden.push((inicio + i) % 18);
+  return orden;
+}
+
+/**
+ * @param {number} posicionEnOrden - cuántos hoyos del ORDEN DE JUEGO real
+ *   se han jugado hasta ahora (incluyendo el actual), 1-18. NO es el
+ *   número de hoyo — si la ronda arranca en el 10, el hoyo 10 es la
+ *   posición 1, el hoyo 18 es la posición 9, el hoyo 1 es la posición 10, etc.
+ *   Esto es necesario para que "acumulado hasta aquí" conserve los hoyos
+ *   ya jugados sin importar en qué orden los jugaron.
+ */
+function calcResumenHastaHoyo(state, posicionEnOrden) {
+  const orden = ordenDeJuego(state.round.hoyoInicial);
+  const indicesJugados = new Set(orden.slice(0, posicionEnOrden));
   const recortado = JSON.parse(JSON.stringify(state));
 
-  const limpiarDesde = (obj) => {
+  const limpiarNoJugados = (obj, valorVacio) => {
     Object.keys(obj).forEach((playerId) => {
-      for (let h = hastaHoyo; h < 18; h++) {
-        if (Array.isArray(obj[playerId])) obj[playerId][h] = null;
+      for (let h = 0; h < 18; h++) {
+        if (indicesJugados.has(h)) continue;
+        if (Array.isArray(obj[playerId])) obj[playerId][h] = valorVacio;
       }
     });
   };
 
-  limpiarDesde(recortado.scores);
+  limpiarNoJugados(recortado.scores, null);
   // sandies/oyes/metidas/banderas usan false/0 como "vacío", no null
-  Object.keys(recortado.sandies).forEach((id) => {
-    for (let h = hastaHoyo; h < 18; h++) recortado.sandies[id][h] = false;
+  limpiarNoJugados(recortado.sandies, false);
+  limpiarNoJugados(recortado.oyes, false);
+  limpiarNoJugados(recortado.metidas, false);
+  Object.keys(recortado.banderas).forEach((playerId) => {
+    for (let h = 0; h < 18; h++) {
+      if (indicesJugados.has(h)) continue;
+      recortado.banderas[playerId][h] = { banderas: 0, threePutt: false };
+    }
   });
-  Object.keys(recortado.oyes).forEach((id) => {
-    for (let h = hastaHoyo; h < 18; h++) recortado.oyes[id][h] = false;
-  });
-  Object.keys(recortado.metidas).forEach((id) => {
-    for (let h = hastaHoyo; h < 18; h++) recortado.metidas[id][h] = false;
-  });
-  Object.keys(recortado.banderas).forEach((id) => {
-    for (let h = hastaHoyo; h < 18; h++) recortado.banderas[id][h] = { banderas: 0, threePutt: false };
-  });
-  for (let h = hastaHoyo; h < 18; h++) {
+  for (let h = 0; h < 18; h++) {
+    if (indicesJugados.has(h)) continue;
     recortado.loba[h] = { loba: null, companero: null, multiplicador: 1 };
   }
 

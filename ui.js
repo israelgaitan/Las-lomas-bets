@@ -921,7 +921,9 @@ function renderHoleScreen(state, onChange) {
 
   /* ---- ACUMULADO HASTA ESTE HOYO (para ir verificando sobre la marcha) ---- */
   wrap.appendChild(el(`<p class="section-divider">Acumulado hasta el hoyo ${h + 1}</p>`));
-  const resumenHasta = calcResumenHastaHoyo(state, h + 1);
+  const ordenJuego = ordenDeJuego(state.round.hoyoInicial);
+  const posicionEnOrden = ordenJuego.indexOf(h) + 1;
+  const resumenHasta = calcResumenHastaHoyo(state, posicionEnOrden);
   const accCard = el(`<div class="card"></div>`);
   state.players.forEach((p) => {
     const bal = resumenHasta.balances[p.id];
