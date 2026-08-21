@@ -304,6 +304,8 @@ function newState() {
         montoIda: 0,
         montoVuelta: 0,
         montoTotal: 0,
+        // quiénes juegan stableford hoy (por defecto los 5)
+        participantes: [1, 2, 3, 4, 5],
       },
       banderas: {
         enabled: true,
@@ -432,6 +434,9 @@ function migrateState(state) {
   }
   if (!state.bets.skins.participantes) {
     state.bets.skins.participantes = state.players.map((p) => p.id);
+  }
+  if (!state.bets.stableford.participantes) {
+    state.bets.stableford.participantes = state.players.map((p) => p.id);
   }
   if (!state.round.hoyoInicial) {
     state.round.hoyoInicial = 1;

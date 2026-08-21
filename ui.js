@@ -983,9 +983,11 @@ function renderHoleScreen(state, onChange) {
       // se paga hasta que se cierra la ida/vuelta/total completos, así que
       // un "$" a mitad de ronda solo confundiría (parecería que ya perdiste
       // dinero en ese hoyo cuando en realidad nada se ha cobrado todavía).
-      const t = resumenHasta.stablefordResult.totales[p.id];
-      const pts = t && t.total.jugados > 0 ? t.total.total : 0;
-      filas.push([`Stableford`, pts, null, "puntos"]);
+      if (state.bets.stableford.participantes.includes(p.id)) {
+        const t = resumenHasta.stablefordResult.totales[p.id];
+        const pts = t && t.total.jugados > 0 ? t.total.total : 0;
+        filas.push([`Stableford`, pts, null, "puntos"]);
+      }
     }
     if (state.bets.banderas.enabled) {
       filas.push(["Banderas", resumenHasta.banderasResult.balances[p.id] || 0, null]);
@@ -1367,7 +1369,30 @@ function renderBetsScreen(state, onChange) {
       onChange(state, { skipRender: true });
     });
     sfCard.querySelector('[data-role="sf-total"]').addEventListener("change", () => onChange(state));
+
+    sfCard.appendChild(el(`<p class="help-text" style="margin:8px 0 4px">¿Quién juega stableford hoy?</p>`));
+    state.players.forEach((p) => {
+      const checked = state.bets.stableford.participantes.includes(p.id);
+      const row = el(`
+        <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
+          <input type="checkbox" data-sf-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+          <span>${p.name}</span>
+        </label>
+      `);
+      row.querySelector("input").addEventListener("change", (e) => {
+        if (e.target.checked) {
+          if (!state.bets.stableford.participantes.includes(p.id)) state.bets.stableford.participantes.push(p.id);
+        } else {
+          state.bets.stableford.participantes = state.bets.stableford.participantes.filter((x) => x !== p.id);
+        }
+        onChange(state);
+      });
+      sfCard.appendChild(row);
+    });
+    sfCard.appendChild(el(`<p class="help-text" style="margin:4px 0 0">Los premios los pelean solo entre ellos, y la ventaja se calcula entre ellos, no contra todo el grupo.</p>`));
     wrap.appendChild(sfCard);
+
+    const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
 
     const sfTable = el(`<div class="card"></div>`);
     sfTable.appendChild(el(`
@@ -1380,7 +1405,7 @@ function renderBetsScreen(state, onChange) {
         </span>
       </div>
     `));
-    state.players.forEach((p) => {
+    jugadoresSf.forEach((p) => {
       const t = resumen.stablefordResult.totales[p.id];
       if (!t) return;
       sfTable.appendChild(el(`
@@ -1397,7 +1422,7 @@ function renderBetsScreen(state, onChange) {
     wrap.appendChild(sfTable);
 
     const sfBalances = el(`<div class="card"></div>`);
-    state.players.forEach((p) => {
+    jugadoresSf.forEach((p) => {
       const bal = resumen.stablefordResult.balances[p.id] || 0;
       sfBalances.appendChild(el(`
         <div class="match-row">
@@ -1573,7 +1598,7 @@ function renderSummaryScreen(state, onChange) {
     fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${totalJugados > 0 ? ida.suma + vuelta.suma : "—"}</td>`));
     table.appendChild(fila);
 
-    if (state.bets.stableford.enabled) {
+    if (state.bets.stableford.enabled && state.bets.stableford.participantes.includes(p.id) && resumen.stablefordResult.totales[p.id]) {
       const puntosCellStyle = cellStyle + ";opacity:0.65;font-size:10px";
       const filaPts = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
       filaPts.appendChild(el(`<td style="${puntosCellStyle};text-align:left">pts</td>`));
@@ -1626,8 +1651,8 @@ function renderSummaryScreen(state, onChange) {
       if (r.rival.includes(p.id)) return sum - r.saldoTotal;
       return sum;
     }, 0);
-    const sk = resumen.skinsResult.totalesPorJugador[p.id];
-    const lob = resumen.lobaResult.balances[p.id];
+    const sk = resumen.skinsResult.totalesPorJugador[p.id] || 0;
+    const lob = resumen.lobaResult.balances[p.id] || 0;
     const sf = resumen.stablefordResult.balances[p.id] || 0;
     const band = resumen.banderasResult.balances[p.id] || 0;
 

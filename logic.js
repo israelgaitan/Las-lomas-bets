@@ -1194,17 +1194,20 @@ function calcResumenGeneral(state) {
     balances[p.id] += lobaResult.balances[p.id];
   });
 
-  // Stableford (hándicap propio de esta modalidad, 3 premios)
-  const ventajasStableford = calcGolpesVentaja(players, course.strokeIndex, "stableford");
-  const stablefordResult = bets.stableford.enabled
-    ? calcStableford(players, scores, ventajasStableford, course.par, {
+  // Stableford (hándicap propio de esta modalidad, 3 premios).
+  // Solo participan los marcados en bets.stableford.participantes; la
+  // ventaja se calcula relativa al más bajo de ESE subgrupo.
+  const jugadoresStableford = players.filter((p) => bets.stableford.participantes.includes(p.id));
+  const ventajasStableford = calcGolpesVentaja(jugadoresStableford, course.strokeIndex, "stableford");
+  const stablefordResult = bets.stableford.enabled && jugadoresStableford.length >= 2
+    ? calcStableford(jugadoresStableford, scores, ventajasStableford, course.par, {
         ida: bets.stableford.montoIda,
         vuelta: bets.stableford.montoVuelta,
         total: bets.stableford.montoTotal,
       })
     : { puntosPorHoyo: {}, totales: {}, premios: {}, balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
-    balances[p.id] += stablefordResult.balances[p.id];
+    balances[p.id] += stablefordResult.balances[p.id] || 0;
   });
 
   // Banderas / 3-putt (marcado manual, no usa hándicap)
