@@ -103,6 +103,9 @@
       fresh.round.courseId = coursesToKeep.some((c) => c.id === state.round.courseId)
         ? state.round.courseId
         : coursesToKeep[0].id;
+      // conservamos si arrancan por el 1 o por el 10, y abrimos ahí
+      fresh.round.hoyoInicial = state.round.hoyoInicial || 1;
+      fresh.round.currentHole = fresh.round.hoyoInicial;
       activeTab = "config";
       onChange(fresh);
     });

@@ -50,6 +50,13 @@ function renderConfigScreen(state, onChange) {
         </select>
       </div>
       <button class="btn btn-ghost btn-small" data-role="add-course" style="width:100%">+ Agregar cancha nueva</button>
+      <div class="field" style="margin-top:10px">
+        <label>¿En qué hoyo arrancan?</label>
+        <select data-role="hoyo-inicial" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;color:var(--crema);font-size:15px">
+          <option value="1" ${state.round.hoyoInicial === 1 ? "selected" : ""}>Hoyo 1 (normal)</option>
+          <option value="10" ${state.round.hoyoInicial === 10 ? "selected" : ""}>Hoyo 10 (salida por el 10)</option>
+        </select>
+      </div>
     </div>
   `);
   courseCard.querySelector('[data-role="course-select"]').addEventListener("change", (e) => {
@@ -67,6 +74,21 @@ function renderConfigScreen(state, onChange) {
       strokeIndex: [...DEFAULT_STROKE_INDEX],
     });
     state.round.courseId = id;
+    onChange(state);
+  });
+  courseCard.querySelector('[data-role="hoyo-inicial"]').addEventListener("change", (e) => {
+    const nuevo = parseInt(e.target.value);
+    state.round.hoyoInicial = nuevo;
+    // saltamos directo a ese hoyo, salvo que ya se hayan anotado golpes
+    // (para no mover a alguien que ya iba a la mitad de la ronda)
+    if (holesPlayedCount(state) === 0) {
+      state.round.currentHole = nuevo;
+    }
+    // los bloques de 6 hoyos siguen el orden de juego, así que hay que
+    // recalcularlos si cambia por dónde arrancan
+    if (state.bets.foursome.rotarParejas) {
+      state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos, nuevo);
+    }
     onChange(state);
   });
   wrap.appendChild(courseCard);
@@ -281,7 +303,7 @@ function renderConfigScreen(state, onChange) {
         if (nParticipantes !== 4) {
           state.bets.foursome.rotarParejas = false;
         } else if (state.bets.foursome.rotarParejas) {
-          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos);
+          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos, state.round.hoyoInicial);
         }
         // si la base ya no está dentro de los participantes, la reseteamos
         // a los primeros 2 participantes disponibles
@@ -314,7 +336,7 @@ function renderConfigScreen(state, onChange) {
       rotarCard.querySelector('[data-role="fs-rotar"]').addEventListener("change", (e) => {
         state.bets.foursome.rotarParejas = e.target.checked;
         if (e.target.checked) {
-          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos);
+          state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes, state.bets.foursome.segmentos, state.round.hoyoInicial);
         }
         onChange(state);
       });
@@ -323,16 +345,41 @@ function renderConfigScreen(state, onChange) {
 
     if (state.bets.foursome.rotarParejas && nParticipantesActual === 4) {
       const segCard = el(`<div class="card" style="margin-top:10px"></div>`);
-      const etiquetaHoyos = ["Hoyos 1-6", "Hoyos 7-12", "Hoyos 13-18"];
+      const [pa, pb, pc, pd] = state.bets.foursome.participantes;
+      // las 3 formas posibles de partir 4 jugadores en 2 parejas
+      const opcionesPareja = [
+        { base: [pa, pb], rival: [pc, pd] },
+        { base: [pa, pc], rival: [pb, pd] },
+        { base: [pa, pd], rival: [pb, pc] },
+      ];
+      const claveDe = (o) => o.base.slice().sort().join(",") + "|" + o.rival.slice().sort().join(",");
+      const rangoHoyos = (seg) => {
+        const nums = seg.hoyos.map((x) => x + 1);
+        return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
+      };
       state.bets.foursome.segmentos.forEach((seg, i) => {
-        const baseNames = seg.base.map((id) => playerName(state, id)).join(" + ");
-        const rivalNames = seg.rival.map((id) => playerName(state, id)).join(" + ");
+        const claveActual = claveDe(seg);
         const row = el(`
-          <div class="field" style="${i > 0 ? "margin-top:12px;padding-top:12px;border-top:1px solid var(--linea)" : ""}">
-            <label>${etiquetaHoyos[i]}: ${baseNames} vs ${rivalNames}</label>
+          <div class="field" style="${i > 0 ? "margin-top:14px;padding-top:14px;border-top:1px solid var(--linea)" : ""}">
+            <label>${rangoHoyos(seg)} — ¿quién va con quién?</label>
+            <select data-seg-pareja="${seg.id}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema);margin-bottom:8px">
+              ${opcionesPareja.map((o) => {
+                const bn = o.base.map((id) => playerName(state, id)).join(" + ");
+                const rn = o.rival.map((id) => playerName(state, id)).join(" + ");
+                return `<option value="${claveDe(o)}" ${claveDe(o) === claveActual ? "selected" : ""}>${bn} vs ${rn}</option>`;
+              }).join("")}
+            </select>
             <input type="number" value="${seg.monto}" data-seg-monto="${seg.id}" placeholder="$ por hoyo" />
           </div>
         `);
+        row.querySelector("select").addEventListener("change", (e) => {
+          const elegida = opcionesPareja.find((o) => claveDe(o) === e.target.value);
+          if (elegida) {
+            seg.base = [...elegida.base];
+            seg.rival = [...elegida.rival];
+            onChange(state);
+          }
+        });
         row.querySelector("input").addEventListener("input", (e) => {
           seg.monto = parseFloat(e.target.value) || 0;
           onChange(state, { skipRender: true });
@@ -340,6 +387,7 @@ function renderConfigScreen(state, onChange) {
         row.querySelector("input").addEventListener("change", () => onChange(state));
         segCard.appendChild(row);
       });
+      segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}. Puedes elegir a mano quién va con quién en cada bloque.</p>`));
       wrap.appendChild(segCard);
     } else {
     const baseCard = el(`
@@ -582,10 +630,13 @@ function renderHoleScreen(state, onChange) {
   const si = course.strokeIndex[h];
   const isPar3 = par === 3;
 
-  // Navegación de hoyo
+  // Navegación de hoyo. Si la ronda arranca en el 10, la navegación da la
+  // vuelta (del 18 pasa al 1 y del 1 regresa al 18), para poder seguir el
+  // orden real de juego sin quedarse atorado en los extremos.
+  const arrancaEn10 = state.round.hoyoInicial === 10;
   const nav = el(`
     <div class="hole-nav">
-      <button class="hole-nav__btn" data-act="prev" ${h === 0 ? "disabled" : ""}>‹</button>
+      <button class="hole-nav__btn" data-act="prev" ${!arrancaEn10 && h === 0 ? "disabled" : ""}>‹</button>
       <div class="hole-flag">
         <div class="hole-flag__number-row">
           <span class="hole-flag__label">Hoyo</span>
@@ -596,18 +647,24 @@ function renderHoleScreen(state, onChange) {
           <span>Hcp hoyo <b>${si}</b></span>
         </div>
       </div>
-      <button class="hole-nav__btn" data-act="next" ${h === 17 ? "disabled" : ""}>›</button>
+      <button class="hole-nav__btn" data-act="next" ${!arrancaEn10 && h === 17 ? "disabled" : ""}>›</button>
     </div>
   `);
   nav.querySelector('[data-act="prev"]').addEventListener("click", () => {
     if (h > 0) {
       state.round.currentHole -= 1;
       onChange(state);
+    } else if (arrancaEn10) {
+      state.round.currentHole = 18;
+      onChange(state);
     }
   });
   nav.querySelector('[data-act="next"]').addEventListener("click", () => {
     if (h < 17) {
       state.round.currentHole += 1;
+      onChange(state);
+    } else if (arrancaEn10) {
+      state.round.currentHole = 1;
       onChange(state);
     }
   });
@@ -777,7 +834,7 @@ function renderHoleScreen(state, onChange) {
   if (state.bets.foursome.enabled && isPar3) {
     const usaRotacion = state.bets.foursome.rotarParejas && state.bets.foursome.participantes.length === 4;
     const fuentesOyesFs = usaRotacion
-      ? state.bets.foursome.segmentos.filter((seg) => h >= seg.desde && h < seg.hasta)
+      ? state.bets.foursome.segmentos.filter((seg) => seg.hoyos.includes(h))
       : state.bets.foursome.crosses;
     if (fuentesOyesFs.length > 0) {
     wrap.appendChild(el(`<p class="section-divider">Oyes de foursome (este hoyo)</p>`));
@@ -1096,7 +1153,10 @@ function renderBetsScreen(state, onChange) {
   if (state.bets.foursome.enabled) {
   const usaRotacionApuestas = state.bets.foursome.rotarParejas && state.bets.foursome.participantes.length === 4;
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">${usaRotacionApuestas ? "Foursome (cambio de pareja cada 6 hoyos)" : "Foursome cruzado"}</h2>`));
-  const etiquetaSegmento = { S1: "Hoyos 1-6", S2: "Hoyos 7-12", S3: "Hoyos 13-18" };
+  const rangoHoyosSeg = (seg) => {
+    const nums = seg.hoyos.map((x) => x + 1);
+    return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
+  };
   resumen.foursomeResults.forEach((r) => {
     const baseNames = r.base.map((id) => playerName(state, id)).join(" + ");
     const rivalNames = r.rival.map((id) => playerName(state, id)).join(" + ");
@@ -1105,7 +1165,7 @@ function renderBetsScreen(state, onChange) {
       const seg = state.bets.foursome.segmentos.find((s) => s.id === r.crossId);
       const card = el(`
         <div class="card">
-          <p class="card__title">${etiquetaSegmento[seg.id] || seg.id}: ${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
+          <p class="card__title">${rangoHoyosSeg(seg)}: ${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
           <div class="field">
             <label>$ por hoyo</label>
             <input type="number" value="${seg.monto}" data-role="monto" />

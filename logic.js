@@ -176,18 +176,48 @@ function generarTodosVsTodos(participantIds) {
  * EXACTAMENTE 4 jugadores. Con 4 jugadores [a,b,c,d] hay 3 combinaciones
  * posibles de parejas 2v2, una por cada bloque de 6 hoyos, así cada quien
  * termina jugando 6 hoyos con cada uno de los otros 3.
+ * Los bloques siguen el ORDEN DE JUEGO: si la ronda arranca en el hoyo 10,
+ * el primer bloque son los hoyos 10-15, el segundo 16-18+1-3, etc. Por eso
+ * cada segmento guarda su lista explícita de hoyos (hoyos: [índices 0-based])
+ * en vez de un rango desde/hasta.
  * @param {Array<number>} participantes - exactamente 4 ids
- * @returns {Array} 3 segmentos {id, desde, hasta, base, rival, monto}
+ * @param {Array} segmentosViejos - para heredar montos y parejas ya elegidas
+ * @param {number} hoyoInicial - 1 o 10
+ * @returns {Array} 3 segmentos {id, hoyos, base, rival, monto}
  */
-function generarSegmentosRotacion(participantes, segmentosViejos) {
+function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial) {
   const [a, b, c, d] = participantes;
   if (a === undefined || b === undefined || c === undefined || d === undefined) return segmentosViejos || [];
-  const montoViejo = segmentosViejos && segmentosViejos.length > 0 ? segmentosViejos[0].monto : 0;
-  return [
-    { id: "S1", desde: 0, hasta: 6, base: [a, b], rival: [c, d], monto: montoViejo },
-    { id: "S2", desde: 6, hasta: 12, base: [a, c], rival: [b, d], monto: montoViejo },
-    { id: "S3", desde: 12, hasta: 18, base: [a, d], rival: [b, c], monto: montoViejo },
+
+  // orden de juego real de los 18 hoyos (índices 0-based)
+  const inicio = (hoyoInicial || 1) - 1;
+  const ordenJuego = [];
+  for (let i = 0; i < 18; i++) ordenJuego.push((inicio + i) % 18);
+
+  const bloques = [ordenJuego.slice(0, 6), ordenJuego.slice(6, 12), ordenJuego.slice(12, 18)];
+  const parejasPorDefecto = [
+    { base: [a, b], rival: [c, d] },
+    { base: [a, c], rival: [b, d] },
+    { base: [a, d], rival: [b, c] },
   ];
+
+  return ["S1", "S2", "S3"].map((id, i) => {
+    const viejo = (segmentosViejos || []).find((s) => s.id === id);
+    // conservamos las parejas y el monto que el usuario ya haya elegido a
+    // mano, siempre que sigan siendo válidas con estos 4 participantes
+    const parejaValida =
+      viejo &&
+      viejo.base && viejo.rival &&
+      [...viejo.base, ...viejo.rival].length === 4 &&
+      [...viejo.base, ...viejo.rival].every((id2) => participantes.includes(id2));
+    return {
+      id,
+      hoyos: bloques[i],
+      base: parejaValida ? [...viejo.base] : parejasPorDefecto[i].base,
+      rival: parejaValida ? [...viejo.rival] : parejasPorDefecto[i].rival,
+      monto: viejo ? viejo.monto : 0,
+    };
+  });
 }
 
 /**
@@ -201,7 +231,7 @@ function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, 
   let saldoTotal = 0;
 
   for (let h = 0; h < 18; h++) {
-    if (h < segmento.desde || h >= segmento.hasta) {
+    if (!segmento.hoyos.includes(h)) {
       holeResults.push({ hole: h + 1, jugado: false, fueraDeSegmento: true });
       continue;
     }

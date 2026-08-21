@@ -159,6 +159,11 @@ function newState() {
     round: {
       courseId: courses[0].id,
       currentHole: 1,
+      // En qué hoyo arranca la ronda: 1 (normal) o 10 (salen por el tee 10).
+      // Solo cambia en qué hoyo abre la app; el par/hándicap de cada hoyo
+      // sigue siendo el de la cancha, y los montos ida/vuelta siguen
+      // ligados a los hoyos 1-9 / 10-18 reales, no al orden de juego.
+      hoyoInicial: 1,
     },
     unit: 1000, // valor de la unidad de apuesta, en la moneda que sea
     // lista permanente de amigos con los que juegas seguido (independiente
@@ -271,9 +276,9 @@ function newState() {
         // con cada quien 6 hoyos). Reemplaza a "crosses" mientras está activo.
         rotarParejas: false,
         segmentos: [
-          { id: "S1", desde: 0, hasta: 6, base: [1, 2], rival: [3, 4], monto: 0 },
-          { id: "S2", desde: 6, hasta: 12, base: [1, 3], rival: [2, 4], monto: 0 },
-          { id: "S3", desde: 12, hasta: 18, base: [1, 4], rival: [2, 3], monto: 0 },
+          { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 0 },
+          { id: "S2", hoyos: [6, 7, 8, 9, 10, 11], base: [1, 3], rival: [2, 4], monto: 0 },
+          { id: "S3", hoyos: [12, 13, 14, 15, 16, 17], base: [1, 4], rival: [2, 3], monto: 0 },
         ],
       },
       skins: {
@@ -428,11 +433,19 @@ function migrateState(state) {
   if (!state.bets.skins.participantes) {
     state.bets.skins.participantes = state.players.map((p) => p.id);
   }
+  if (!state.round.hoyoInicial) {
+    state.round.hoyoInicial = 1;
+  }
+  if (!state.bets.foursome.segmentos || state.bets.foursome.segmentos.some((s) => !s.hoyos)) {
+    // versiones viejas guardaban desde/hasta en vez de la lista de hoyos
+    state.bets.foursome.segmentos = generarSegmentosRotacion(
+      state.bets.foursome.participantes.slice(0, 4),
+      state.bets.foursome.segmentos,
+      state.round.hoyoInicial
+    );
+  }
   if (state.bets.foursome.rotarParejas === undefined) {
     state.bets.foursome.rotarParejas = false;
-  }
-  if (!state.bets.foursome.segmentos) {
-    state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes.slice(0, 4));
   }
   if (!state.banderas) {
     state.banderas = {};
