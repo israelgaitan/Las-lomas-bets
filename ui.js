@@ -803,7 +803,7 @@ function renderHoleScreen(state, onChange) {
   // par 3. El ganador puede variar según el rival (ej: 1 le gana el oyes
   // a 2, pero pierde el oyes contra 3), por eso es manual y no automático.
   if (state.bets.individuales.enabled && isPar3 && state.bets.individuales.matches.length > 0) {
-    wrap.appendChild(el(`<p class="section-divider">Oyes de individuales (este hoyo)</p>`));
+    wrap.appendChild(el(`<p class="section-divider" style="font-size:15px">Oyes de individuales (este hoyo)</p>`));
     const oyesIndCard = el(`<div class="card"></div>`);
     if (!state.individualesOyes[h]) state.individualesOyes[h] = {};
     const cfgOyesInd = state.individualesOyes[h];
@@ -814,8 +814,8 @@ function renderHoleScreen(state, onChange) {
       const valorActual = cfgOyesInd[key] || "";
       const row = el(`
         <div class="field" style="margin-bottom:10px">
-          <label>${nameA} vs ${nameB}</label>
-          <select data-match-key="${key}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+          <label style="font-size:15px">${nameA} vs ${nameB}</label>
+          <select data-match-key="${key}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:12px 10px;color:var(--crema);font-size:17px;font-weight:600">
             <option value="" ${valorActual === "" ? "selected" : ""}>— sin marcar —</option>
             <option value="${m.a}" ${String(valorActual) === String(m.a) ? "selected" : ""}>Gana ${nameA}</option>
             <option value="${m.b}" ${String(valorActual) === String(m.b) ? "selected" : ""}>Gana ${nameB}</option>
