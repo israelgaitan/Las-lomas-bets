@@ -23,7 +23,6 @@ function repartirGolpesPorDificultad(diff, strokeIndex) {
  * Porcentaje del hándicap que se usa SOLO para loba (algunos grupos juegan
  * loba con el hcp recortado, ej: 80%, en vez del 100% de las demás modalidades).
  */
-const LOBA_HCP_PORCENTAJE = 0.8;
 
 /**
  * Calcula los golpes de ventaja por jugador y por hoyo, para uso INDIVIDUAL
@@ -55,11 +54,6 @@ function calcGolpesVentaja(players, strokeIndex, modalidad, porcentaje) {
 
   return result;
 }
-
-// Porcentaje de hándicap usado específicamente para loba (algunos clubes
-// juegan loba con el hcp recortado al 80%, en vez del 100% de las demás
-// modalidades).
-const PORCENTAJE_HCP_LOBA = 0.8;
 
 /**
  * Calcula los golpes de ventaja para FOURSOME, donde la ventaja se calcula
