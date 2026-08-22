@@ -754,7 +754,7 @@ function puntosStableford(neto, par) {
  * @param {Object} montos - { ida, vuelta, total } montos por premio
  * @returns {Object} { puntosPorHoyo: {id:[18]}, totales: {id:{ida,vuelta,total}}, premios: {...}, balances: {id: monto neto} }
  */
-function calcStableford(players, brutos, ventajas, par, montos) {
+function calcStableford(players, brutos, ventajas, par, montos, hoyoInicial) {
   const puntosPorHoyo = {};
   players.forEach((p) => (puntosPorHoyo[p.id] = new Array(18).fill(null)));
 
@@ -765,46 +765,56 @@ function calcStableford(players, brutos, ventajas, par, montos) {
     });
   }
 
-  const sumaRango = (id, ini, fin) => {
+  // "ida" = los primeros 9 hoyos que se JUEGAN en orden real (no siempre
+  // son los hoyos 1-9: si arrancan en el 10, la ida son los hoyos 10-18).
+  const orden = ordenDeJuego(hoyoInicial);
+  const indicesIda = orden.slice(0, 9);
+  const indicesVuelta = orden.slice(9, 18);
+
+  const sumaIndices = (id, indices) => {
     let total = 0;
     let jugados = 0;
-    for (let h = ini; h < fin; h++) {
+    indices.forEach((h) => {
       const pts = puntosPorHoyo[id][h];
       if (pts !== null) {
         total += pts;
         jugados++;
       }
-    }
+    });
     return { total, jugados };
   };
 
   const totales = {};
   players.forEach((p) => {
     totales[p.id] = {
-      ida: sumaRango(p.id, 0, 9),
-      vuelta: sumaRango(p.id, 9, 18),
-      total: sumaRango(p.id, 0, 18),
+      ida: sumaIndices(p.id, indicesIda),
+      vuelta: sumaIndices(p.id, indicesVuelta),
+      total: sumaIndices(p.id, [...indicesIda, ...indicesVuelta]),
     };
   });
 
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
 
-  function resolverPremio(key, monto) {
-    // solo cuenta a quienes ya jugaron al menos 1 hoyo de ese rango
-    const conPuntos = players
-      .map((p) => ({ id: p.id, pts: totales[p.id][key].total, jugados: totales[p.id][key].jugados }))
-      .filter((x) => x.jugados > 0);
+  function resolverPremio(key, monto, hoyosDelRango) {
+    // el premio SOLO se decide (y se cobra) cuando el segmento está
+    // COMPLETO para TODOS los que juegan stableford — los 9 hoyos de
+    // ida/vuelta, o los 18 del total. Antes de eso no hay ganador, aunque
+    // ya se vean puntos parciales en el desglose. Sin este candado se
+    // pagaba de más con solo 1 hoyo jugado de esa mitad, como si ya
+    // estuviera decidido — justo lo que generaba el salto raro al cruzar
+    // de la vuelta a la ida en una ronda que arranca en el hoyo 10.
+    const todosCompletos = players.every((p) => totales[p.id][key].jugados === hoyosDelRango);
+    if (!todosCompletos) return { ganadores: [], montoCadaGanador: 0, decidido: false };
 
-    if (conPuntos.length === 0) return { ganadores: [], montoCadaGanador: 0 };
-
+    const conPuntos = players.map((p) => ({ id: p.id, pts: totales[p.id][key].total }));
     const maxPts = Math.max(...conPuntos.map((x) => x.pts));
     const ganadores = conPuntos.filter((x) => x.pts === maxPts).map((x) => x.id);
     const perdedores = players.map((p) => p.id).filter((id) => !ganadores.includes(id));
 
     if (ganadores.length === players.length) {
       // todos empatados, nadie pierde, no hay nada que cobrar
-      return { ganadores, montoCadaGanador: 0 };
+      return { ganadores, montoCadaGanador: 0, decidido: true };
     }
 
     const totalCobrado = monto * perdedores.length;
@@ -813,13 +823,13 @@ function calcStableford(players, brutos, ventajas, par, montos) {
     ganadores.forEach((id) => (balances[id] += montoCadaGanador));
     perdedores.forEach((id) => (balances[id] -= monto));
 
-    return { ganadores, montoCadaGanador };
+    return { ganadores, montoCadaGanador, decidido: true };
   }
 
   const premios = {
-    ida: resolverPremio("ida", montos.ida),
-    vuelta: resolverPremio("vuelta", montos.vuelta),
-    total: resolverPremio("total", montos.total),
+    ida: resolverPremio("ida", montos.ida, 9),
+    vuelta: resolverPremio("vuelta", montos.vuelta, 9),
+    total: resolverPremio("total", montos.total, 18),
   };
 
   return { puntosPorHoyo, totales, premios, balances };
@@ -1225,7 +1235,7 @@ function calcResumenGeneral(state) {
         ida: bets.stableford.montoIda,
         vuelta: bets.stableford.montoVuelta,
         total: bets.stableford.montoTotal,
-      })
+      }, round.hoyoInicial)
     : { puntosPorHoyo: {}, totales: {}, premios: {}, balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
     balances[p.id] += stablefordResult.balances[p.id] || 0;
