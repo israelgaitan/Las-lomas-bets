@@ -693,7 +693,7 @@ function renderHoleScreen(state, onChange) {
         <div class="player-row__controls" style="margin-top:8px">
           <div class="stepper">
             <button class="stepper__btn" data-act="banderas-minus">−</button>
-            <span class="stepper__value ${banderasCfg.banderas === 0 ? "empty" : ""}" data-role="banderas-value" style="font-size:16px">🚩${banderasCfg.banderas}</span>
+            <span class="stepper__value ${banderasCfg.banderas === 0 ? "empty" : ""}" data-role="banderas-value" style="font-size:22px">🚩${banderasCfg.banderas}</span>
             <button class="stepper__btn" data-act="banderas-plus">+</button>
           </div>
         </div>
@@ -709,10 +709,9 @@ function renderHoleScreen(state, onChange) {
         <div class="player-row__controls" style="margin-top:8px">
           <div class="stepper">
             <button class="stepper__btn" data-act="chupes-minus">−</button>
-            <span class="stepper__value ${banderasCfg.chupes === 0 ? "empty" : ""}" data-role="chupes-value" style="font-size:16px">🥤${banderasCfg.chupes}</span>
+            <span class="stepper__value ${banderasCfg.chupes === 0 ? "empty" : ""}" data-role="chupes-value" style="font-size:22px">🥤${banderasCfg.chupes}</span>
             <button class="stepper__btn" data-act="chupes-plus">+</button>
           </div>
-          <p class="help-text" style="margin:0">Chupes (siempre negativo, le paga a cada uno de los demás)</p>
         </div>
         ` : ""}
       </div>
