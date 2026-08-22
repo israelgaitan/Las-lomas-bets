@@ -179,7 +179,19 @@ function generarTodosVsTodos(participantIds) {
  * @param {number} hoyoInicial - 1 o 10
  * @returns {Array} 3 segmentos {id, hoyos, base, rival, monto}
  */
-function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial) {
+/**
+ * Genera los bloques del modo "Foursome" de 4 jugadores.
+ * - rotar=true: 3 bloques de 6 hoyos (en tu orden real de juego), pasando
+ *   por las 3 combinaciones posibles de pareja — cada quien juega 6 hoyos
+ *   con cada uno de los otros 3.
+ * - rotar=false: 1 solo bloque con los 18 hoyos, pareja FIJA elegida a mano.
+ * @param {Array<number>} participantes - exactamente 4 ids
+ * @param {Array} segmentosViejos - para heredar montos y parejas ya elegidas
+ * @param {number} hoyoInicial - 1 o 10
+ * @param {boolean} rotar - true = cambia de pareja cada 6 hoyos, false = pareja fija los 18
+ * @returns {Array} 1 o 3 segmentos {id, hoyos, base, rival, monto}
+ */
+function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial, rotar) {
   const [a, b, c, d] = participantes;
   if (a === undefined || b === undefined || c === undefined || d === undefined) return segmentosViejos || [];
 
@@ -187,6 +199,25 @@ function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial) {
   const inicio = (hoyoInicial || 1) - 1;
   const ordenJuego = [];
   for (let i = 0; i < 18; i++) ordenJuego.push((inicio + i) % 18);
+
+  if (rotar === false) {
+    // pareja fija para los 18 hoyos completos
+    const viejo = (segmentosViejos || [])[0];
+    const parejaValida =
+      viejo &&
+      viejo.base && viejo.rival &&
+      [...viejo.base, ...viejo.rival].length === 4 &&
+      [...viejo.base, ...viejo.rival].every((id2) => participantes.includes(id2));
+    return [
+      {
+        id: "S1",
+        hoyos: ordenJuego,
+        base: parejaValida ? [...viejo.base] : [a, b],
+        rival: parejaValida ? [...viejo.rival] : [c, d],
+        monto: viejo ? viejo.monto : 0,
+      },
+    ];
+  }
 
   const bloques = [ordenJuego.slice(0, 6), ordenJuego.slice(6, 12), ordenJuego.slice(12, 18)];
   const parejasPorDefecto = [
@@ -210,6 +241,7 @@ function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial) {
       base: parejaValida ? [...viejo.base] : parejasPorDefecto[i].base,
       rival: parejaValida ? [...viejo.rival] : parejasPorDefecto[i].rival,
       monto: viejo ? viejo.monto : 0,
+
     };
   });
 }

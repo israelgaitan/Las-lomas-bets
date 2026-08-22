@@ -288,15 +288,18 @@ function newState() {
           { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
         ],
       },
-      // "Rotación de parejas cada 6 hoyos": modo INDEPENDIENTE de foursome
-      // cruzado. Necesita EXACTAMENTE 4 participantes. Cada 6 hoyos (en tu
-      // orden real de juego) cambia la pareja, pasando por las 3
-      // combinaciones posibles con esos 4 — así cada quien juega 6 hoyos
-      // con cada uno de los otros 3. La ventaja se calcula igual que en
-      // foursome (suma de hcp.foursome de la pareja vs la pareja rival).
+      // "Foursome" de 4 jugadores: modo INDEPENDIENTE de "Foursome cruzado"
+      // (que sigue usando 5). Necesita EXACTAMENTE 4 participantes.
+      // rotar=true: cambia de pareja cada 6 hoyos (en tu orden real de
+      // juego), pasando por las 3 combinaciones posibles — así cada quien
+      // juega 6 hoyos con cada uno de los otros 3.
+      // rotar=false: pareja fija los 18 hoyos completos (elegida a mano).
+      // La ventaja se calcula igual que en foursome cruzado (suma de
+      // hcp.foursome de la pareja vs la pareja rival).
       rotacion: {
         enabled: false,
         unidadesActivas: true,
+        rotar: true,
         participantes: [1, 2, 3, 4],
         segmentos: [
           { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 0 },
@@ -488,6 +491,7 @@ function migrateState(state) {
       state.bets.rotacion = {
         enabled: !!state.bets.foursome.rotarParejas,
         unidadesActivas: state.bets.foursome.unidadesActivas,
+        rotar: true,
         participantes: state.bets.foursome.participantes.length === 4 ? [...state.bets.foursome.participantes] : [1, 2, 3, 4],
         segmentos: state.bets.foursome.segmentos || [],
       };
@@ -499,16 +503,21 @@ function migrateState(state) {
     state.bets.rotacion = {
       enabled: false,
       unidadesActivas: true,
+      rotar: true,
       participantes: [1, 2, 3, 4],
       segmentos: [],
     };
+  }
+  if (state.bets.rotacion.rotar === undefined) {
+    state.bets.rotacion.rotar = true;
   }
   if (!state.bets.rotacion.segmentos || state.bets.rotacion.segmentos.length === 0 || state.bets.rotacion.segmentos.some((s) => !s.hoyos)) {
     // versiones viejas guardaban desde/hasta en vez de la lista de hoyos
     state.bets.rotacion.segmentos = generarSegmentosRotacion(
       state.bets.rotacion.participantes.slice(0, 4),
       state.bets.rotacion.segmentos,
-      state.round.hoyoInicial
+      state.round.hoyoInicial,
+      state.bets.rotacion.rotar
     );
   }
   if (!state.banderas) {

@@ -87,7 +87,7 @@ function renderConfigScreen(state, onChange) {
     // los bloques de 6 hoyos siguen el orden de juego, así que hay que
     // recalcularlos si cambia por dónde arrancan
     if (state.bets.rotacion.enabled && state.bets.rotacion.participantes.length === 4) {
-      state.bets.rotacion.segmentos = generarSegmentosRotacion(state.bets.rotacion.participantes, state.bets.rotacion.segmentos, nuevo);
+      state.bets.rotacion.segmentos = generarSegmentosRotacion(state.bets.rotacion.participantes, state.bets.rotacion.segmentos, nuevo, state.bets.rotacion.rotar);
     }
     onChange(state);
   });
@@ -250,7 +250,7 @@ function renderConfigScreen(state, onChange) {
   const modalidades = [
     { key: "individuales", label: "Individuales" },
     { key: "foursome", label: "Foursome cruzado" },
-    { key: "rotacion", label: "Rotación de parejas (cada 6 hoyos)" },
+    { key: "rotacion", label: "Foursome (4 jugadores)" },
     { key: "skins", label: "Skins" },
     { key: "loba", label: "Loba" },
     { key: "stableford", label: "Stableford" },
@@ -374,12 +374,12 @@ function renderConfigScreen(state, onChange) {
 
   /* ---- ROTACIÓN DE PAREJAS CADA 6 HOYOS (modo independiente) ---- */
   if (state.bets.rotacion.enabled) {
-    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Rotación de parejas</h2>`));
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome (4 jugadores)</h2>`));
     wrap.appendChild(el(`<p class="help-text">Necesita EXACTAMENTE 4 jugadores. Cada 6 hoyos (en tu orden real de juego) cambia la pareja, pasando por las 3 combinaciones posibles.</p>`));
 
     const rotParticipantesCard = el(`
       <div class="card">
-        <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega rotación hoy?</p>
+        <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy?</p>
       </div>
     `);
     state.players.forEach((p) => {
@@ -398,9 +398,9 @@ function renderConfigScreen(state, onChange) {
           state.bets.rotacion.participantes = state.bets.rotacion.participantes.filter((x) => x !== id);
         }
         if (state.bets.rotacion.participantes.length !== 4) {
-          alert("Rotación de parejas necesita EXACTAMENTE 4 participantes.");
+          alert("Foursome (4 jugadores) necesita EXACTAMENTE 4 participantes.");
         } else {
-          state.bets.rotacion.segmentos = generarSegmentosRotacion(state.bets.rotacion.participantes, state.bets.rotacion.segmentos, state.round.hoyoInicial);
+          state.bets.rotacion.segmentos = generarSegmentosRotacion(state.bets.rotacion.participantes, state.bets.rotacion.segmentos, state.round.hoyoInicial, state.bets.rotacion.rotar);
         }
         onChange(state);
       });
@@ -409,6 +409,24 @@ function renderConfigScreen(state, onChange) {
     const nRotacionActual = state.bets.rotacion.participantes.length;
     rotParticipantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${nRotacionActual === 4 ? "4 seleccionados ✓" : `⚠️ ${nRotacionActual} seleccionados — elige exactamente 4.`}</p>`));
     wrap.appendChild(rotParticipantesCard);
+
+    if (nRotacionActual === 4) {
+      const rotarToggleCard = el(`
+        <div class="card" style="margin-top:10px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" data-role="rot-rotar" ${state.bets.rotacion.rotar ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+            <span>Cambiar de pareja cada 6 hoyos</span>
+          </label>
+          <p class="help-text" style="margin:6px 0 0">Si lo apagas, la pareja queda FIJA los 18 hoyos completos (la eliges abajo).</p>
+        </div>
+      `);
+      rotarToggleCard.querySelector('[data-role="rot-rotar"]').addEventListener("change", (e) => {
+        state.bets.rotacion.rotar = e.target.checked;
+        state.bets.rotacion.segmentos = generarSegmentosRotacion(state.bets.rotacion.participantes, state.bets.rotacion.segmentos, state.round.hoyoInicial, e.target.checked);
+        onChange(state);
+      });
+      wrap.appendChild(rotarToggleCard);
+    }
 
     if (nRotacionActual === 4) {
       const segCard = el(`<div class="card" style="margin-top:10px"></div>`);
@@ -421,6 +439,7 @@ function renderConfigScreen(state, onChange) {
       ];
       const claveDe = (o) => o.base.slice().sort().join(",") + "|" + o.rival.slice().sort().join(",");
       const rangoHoyos = (seg) => {
+        if (!state.bets.rotacion.rotar) return "Los 18 hoyos";
         const nums = seg.hoyos.map((x) => x + 1);
         return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
       };
@@ -454,7 +473,9 @@ function renderConfigScreen(state, onChange) {
         row.querySelector("input").addEventListener("change", () => onChange(state));
         segCard.appendChild(row);
       });
-      segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}.</p>`));
+      if (state.bets.rotacion.rotar) {
+        segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}.</p>`));
+      }
       wrap.appendChild(segCard);
     }
 
@@ -895,7 +916,7 @@ function renderHoleScreen(state, onChange) {
   if (state.bets.rotacion.enabled && state.bets.rotacion.participantes.length === 4 && isPar3) {
     const segmentoDeEsteHoyo = state.bets.rotacion.segmentos.filter((seg) => seg.hoyos.includes(h));
     if (segmentoDeEsteHoyo.length > 0) {
-      wrap.appendChild(el(`<p class="section-divider">Oyes de rotación (este hoyo)</p>`));
+      wrap.appendChild(el(`<p class="section-divider">Oyes de foursome 4j (este hoyo)</p>`));
       const oyesRotCard = el(`<div class="card"></div>`);
       if (!state.rotacionOyes[h]) state.rotacionOyes[h] = {};
       const cfgOyesRot = state.rotacionOyes[h];
@@ -1043,7 +1064,7 @@ function renderHoleScreen(state, onChange) {
         const rivalNames = (enBase ? r.rival : r.base).map((id) => playerName(state, id)).join("+");
         const dinero = enBase ? r.saldoTotal : -r.saldoTotal;
         const unidades = enBase ? r.totalUnidades : -r.totalUnidades;
-        filas.push([`Rotación (con ${companeroNombre}) vs ${rivalNames}`, dinero, unidades]);
+        filas.push([`Foursome 4j (con ${companeroNombre}) vs ${rivalNames}`, dinero, unidades]);
       });
     }
     if (state.bets.skins.enabled && state.bets.skins.participantes.includes(p.id)) {
@@ -1275,7 +1296,7 @@ function renderBetsScreen(state, onChange) {
 
   /* ---- ROTACIÓN DE PAREJAS (modo independiente) ---- */
   if (state.bets.rotacion.enabled && state.bets.rotacion.participantes.length === 4) {
-    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Rotación de parejas</h2>`));
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome (4 jugadores)</h2>`));
     const rangoHoyosSeg = (seg) => {
       const nums = seg.hoyos.map((x) => x + 1);
       return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
@@ -1742,7 +1763,7 @@ function renderSummaryScreen(state, onChange) {
     const filas = [];
     if (state.bets.individuales.enabled) filas.push(["Individuales", ind]);
     if (state.bets.foursome.enabled) filas.push(["Foursome", fs]);
-    if (state.bets.rotacion.enabled && state.bets.rotacion.participantes.length === 4) filas.push(["Rotación", rot]);
+    if (state.bets.rotacion.enabled && state.bets.rotacion.participantes.length === 4) filas.push(["Foursome 4j", rot]);
     if (state.bets.skins.enabled) filas.push(["Skins", sk]);
     if (state.bets.loba.enabled) filas.push(["Loba", lob]);
     if (state.bets.stableford.enabled) filas.push(["Stableford", sf]);
