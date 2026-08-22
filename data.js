@@ -319,12 +319,29 @@ function newState() {
         // quiénes juegan stableford hoy (por defecto los 5)
         participantes: [1, 2, 3, 4, 5],
       },
+      // Banderas, 3-putt y Chupes ahora son 3 apuestas INDEPENDIENTES: cada
+      // una con su propio monto y su propia lista de participantes (no
+      // tienen que jugarlas los mismos ni al mismo precio). Los datos
+      // marcados por hoyo (state.banderas[playerId][h]) siguen compartiendo
+      // la misma estructura {banderas, threePutt, chupes}, solo el $ y
+      // quién participa se separaron.
       banderas: {
         enabled: true,
-        // ids de jugadores que participan en banderas/3-putt hoy
         participantes: [1, 2, 3, 4, 5],
-        // monto base: banderas cobra monto×N banderas a cada uno de los
-        // demás PARTICIPANTES; 3-putt paga monto×1 a cada uno de ellos
+        // banderas cobra monto×N banderas a cada uno de los demás PARTICIPANTES
+        monto: 0,
+      },
+      threePutt: {
+        enabled: true,
+        participantes: [1, 2, 3, 4, 5],
+        // 3-putt paga monto×1 a cada uno de los demás participantes
+        monto: 0,
+      },
+      chupes: {
+        enabled: true,
+        participantes: [1, 2, 3, 4, 5],
+        // chupes SIEMPRE negativo: paga monto×N chupes a cada uno de los
+        // demás participantes
         monto: 0,
       },
     },
@@ -512,6 +529,25 @@ function migrateState(state) {
   }
   if (!state.bets.banderas.participantes) {
     state.bets.banderas.participantes = state.players.map((p) => p.id);
+  }
+  // Banderas, 3-putt y Chupes eran una sola apuesta compartida; ahora son
+  // 3 independientes. Si el estado guardado todavía no tiene threePutt/
+  // chupes por separado, se crean heredando el monto y participantes que
+  // ya tenía "banderas" (para no perder la configuración de quien ya
+  // jugaba), y de ahí en adelante cada quien se edita por su cuenta.
+  if (!state.bets.threePutt) {
+    state.bets.threePutt = {
+      enabled: state.bets.banderas.enabled,
+      monto: state.bets.banderas.monto,
+      participantes: [...state.bets.banderas.participantes],
+    };
+  }
+  if (!state.bets.chupes) {
+    state.bets.chupes = {
+      enabled: state.bets.banderas.enabled,
+      monto: 0,
+      participantes: [...state.bets.banderas.participantes],
+    };
   }
   // migrar partidos viejos que tenían un solo campo "monto" en vez de ida/vuelta
   state.bets.individuales.matches.forEach((m) => {

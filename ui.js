@@ -253,7 +253,9 @@ function renderConfigScreen(state, onChange) {
     { key: "skins", label: "Skins" },
     { key: "loba", label: "Loba" },
     { key: "stableford", label: "Stableford" },
-    { key: "banderas", label: "Banderas / 3-putt" },
+    { key: "banderas", label: "Banderas" },
+    { key: "threePutt", label: "3-putt" },
+    { key: "chupes", label: "Chupes" },
   ];
   const modalCard = el(`<div class="card"></div>`);
   modalidades.forEach((m) => {
@@ -491,11 +493,6 @@ function renderConfigScreen(state, onChange) {
         <label>Stableford — $ premio total (18 hoyos)</label>
         <input type="number" value="${state.bets.stableford.montoTotal}" data-role="sf-total" />
       </div>
-
-      <div class="field">
-        <label>Banderas / 3-putt — $ por bandera (3-putt = 1 bandera negativa)</label>
-        <input type="number" value="${state.bets.banderas.monto}" data-role="banderas" />
-      </div>
     </div>
   `);
 
@@ -554,11 +551,6 @@ function renderConfigScreen(state, onChange) {
     onChange(state, { skipRender: true });
   });
   betsCard.querySelector('[data-role="sf-total"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="banderas"]').addEventListener("input", (e) => {
-    state.bets.banderas.monto = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="banderas"]').addEventListener("change", () => onChange(state));
   wrap.appendChild(betsCard);
 
   /* ---- PAR Y STROKE INDEX DE LA CANCHA ACTIVA ---- */
@@ -704,10 +696,16 @@ function renderHoleScreen(state, onChange) {
             <span class="stepper__value ${banderasCfg.banderas === 0 ? "empty" : ""}" data-role="banderas-value" style="font-size:16px">🚩${banderasCfg.banderas}</span>
             <button class="stepper__btn" data-act="banderas-plus">+</button>
           </div>
+        </div>
+        ` : ""}
+        ${state.bets.threePutt.enabled && state.bets.threePutt.participantes.includes(p.id) ? `
+        <div class="player-row__controls" style="margin-top:8px">
           <div class="event-toggles">
             <button class="event-toggle ${banderasCfg.threePutt ? "active" : ""}" data-act="threeputt">3-putt</button>
           </div>
         </div>
+        ` : ""}
+        ${state.bets.chupes.enabled && state.bets.chupes.participantes.includes(p.id) ? `
         <div class="player-row__controls" style="margin-top:8px">
           <div class="stepper">
             <button class="stepper__btn" data-act="chupes-minus">−</button>
@@ -762,7 +760,6 @@ function renderHoleScreen(state, onChange) {
     if (banderasPlusBtn) {
       banderasPlusBtn.addEventListener("click", () => {
         banderasCfg.banderas += 1;
-        if (banderasCfg.banderas > 0) banderasCfg.threePutt = false; // mutuamente excluyentes
         onChange(state);
       });
     }
@@ -770,7 +767,6 @@ function renderHoleScreen(state, onChange) {
     if (threePuttBtn) {
       threePuttBtn.addEventListener("click", () => {
         banderasCfg.threePutt = !banderasCfg.threePutt;
-        if (banderasCfg.threePutt) banderasCfg.banderas = 0; // mutuamente excluyentes
         onChange(state);
       });
     }
@@ -1000,8 +996,14 @@ function renderHoleScreen(state, onChange) {
         filas.push([`Stableford`, pts, null, "puntos"]);
       }
     }
-    if (state.bets.banderas.enabled) {
+    if (state.bets.banderas.enabled && state.bets.banderas.participantes.includes(p.id)) {
       filas.push(["Banderas", resumenHasta.banderasResult.balances[p.id] || 0, null]);
+    }
+    if (state.bets.threePutt.enabled && state.bets.threePutt.participantes.includes(p.id)) {
+      filas.push(["3-putt", resumenHasta.threePuttResult.balances[p.id] || 0, null]);
+    }
+    if (state.bets.chupes.enabled && state.bets.chupes.participantes.includes(p.id)) {
+      filas.push(["Chupes", resumenHasta.chupesResult.balances[p.id] || 0, null]);
     }
 
     const filasHtml = filas.map(([label, val, unidades, tipo]) => {
@@ -1434,14 +1436,15 @@ function renderBetsScreen(state, onChange) {
     wrap.appendChild(sfBalances);
   }
 
-  /* ---- BANDERAS / 3-PUTT ---- */
-  if (state.bets.banderas.enabled) {
-    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Banderas / 3-putt</h2>`));
+  /* ---- BANDERAS / 3-PUTT / CHUPES (3 apuestas independientes) ---- */
+  function renderApuestaContador(betKey, titulo, labelMonto, resultKey, emoji, tipoDetalle, ayudaVacio) {
+    if (!state.bets[betKey].enabled) return;
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">${titulo}</h2>`));
 
-    const bandParticipantesCard = el(`<div class="card"></div>`);
-    bandParticipantesCard.appendChild(el(`<p class="card__subtitle" style="margin-bottom:8px">¿Quién juega banderas hoy?</p>`));
+    const participantesCard = el(`<div class="card"></div>`);
+    participantesCard.appendChild(el(`<p class="card__subtitle" style="margin-bottom:8px">¿Quién juega ${titulo.toLowerCase()} hoy?</p>`));
     state.players.forEach((p) => {
-      const checked = state.bets.banderas.participantes.includes(p.id);
+      const checked = state.bets[betKey].participantes.includes(p.id);
       const row = el(`
         <div class="checkbox-row">
           <input type="checkbox" ${checked ? "checked" : ""} data-player-id="${p.id}" />
@@ -1449,7 +1452,7 @@ function renderBetsScreen(state, onChange) {
         </div>
       `);
       row.querySelector("input").addEventListener("change", (e) => {
-        const list = state.bets.banderas.participantes;
+        const list = state.bets[betKey].participantes;
         if (e.target.checked) {
           if (!list.includes(p.id)) list.push(p.id);
         } else {
@@ -1458,49 +1461,52 @@ function renderBetsScreen(state, onChange) {
         }
         onChange(state);
       });
-      bandParticipantesCard.appendChild(row);
+      participantesCard.appendChild(row);
     });
-    wrap.appendChild(bandParticipantesCard);
+    wrap.appendChild(participantesCard);
     wrap.appendChild(el(`<p class="help-text">Quien no participa no cobra ni paga nada; el resto se reparte solo entre quienes sí juegan.</p>`));
 
-    const bandCard = el(`
+    const card = el(`
       <div class="card">
         <div class="field">
-          <label>$ por bandera (3-putt = 1 bandera negativa)</label>
-          <input type="number" value="${state.bets.banderas.monto}" data-role="monto" />
+          <label>${labelMonto}</label>
+          <input type="number" value="${state.bets[betKey].monto}" data-role="monto" />
         </div>
-        <p class="help-text">Marca las banderas y 3-putts de cada jugador en la pestaña Hoyo.</p>
       </div>
     `);
-    bandCard.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
-      state.bets.banderas.monto = parseFloat(e.target.value) || 0;
+    card.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
+      state.bets[betKey].monto = parseFloat(e.target.value) || 0;
       onChange(state, { skipRender: true });
     });
-    bandCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
-    state.players.forEach((p) => {
-      const bal = resumen.banderasResult.balances[p.id] || 0;
-      bandCard.appendChild(el(`
+    card.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
+    state.players.filter((p) => state.bets[betKey].participantes.includes(p.id)).forEach((p) => {
+      const bal = resumen[resultKey].balances[p.id] || 0;
+      card.appendChild(el(`
         <div class="match-row">
           <span class="match-row__names">${p.name}</span>
           <span class="match-row__amount ${moneyClass(bal)}">${fmtMoney(bal)}</span>
         </div>
       `));
     });
-    if (resumen.banderasResult.detalle.length === 0) {
-      bandCard.appendChild(el(`<p class="help-text">Sin banderas ni 3-putts registrados todavía.</p>`));
+    if (resumen[resultKey].detalle.length === 0) {
+      card.appendChild(el(`<p class="help-text">${ayudaVacio}</p>`));
     } else {
-      resumen.banderasResult.detalle.slice().reverse().forEach((d) => {
-        const txt = d.tipo === "banderas" ? `🚩×${d.cantidad}` : d.tipo === "chupes" ? `🥤×${d.cantidad}` : "3-putt";
-        bandCard.appendChild(el(`
+      resumen[resultKey].detalle.slice().reverse().forEach((d) => {
+        const esPositivo = betKey === "banderas";
+        card.appendChild(el(`
           <div class="match-row">
-            <span class="match-row__names">H${d.hole} · ${playerName(state, d.playerId)} · ${txt}</span>
-            <span class="match-row__amount ${d.tipo === "banderas" ? "amount-pos" : "amount-neg"}" style="font-size:12px">${d.tipo === "banderas" ? "+" : "-"}${fmtMoney(d.monto)}</span>
+            <span class="match-row__names">H${d.hole} · ${playerName(state, d.playerId)} · ${emoji}×${d.cantidad}</span>
+            <span class="match-row__amount ${esPositivo ? "amount-pos" : "amount-neg"}" style="font-size:12px">${esPositivo ? "+" : "-"}${fmtMoney(d.monto)}</span>
           </div>
         `));
       });
     }
-    wrap.appendChild(bandCard);
+    wrap.appendChild(card);
   }
+
+  renderApuestaContador("banderas", "Banderas", "$ por bandera", "banderasResult", "🚩", "banderas", "Sin banderas registradas todavía.");
+  renderApuestaContador("threePutt", "3-putt", "$ por 3-putt", "threePuttResult", "🎯", "3putt", "Sin 3-putts registrados todavía.");
+  renderApuestaContador("chupes", "Chupes", "$ por chupe", "chupesResult", "🥤", "chupes", "Sin chupes registrados todavía.");
 
   return wrap;
 }
@@ -1655,6 +1661,8 @@ function renderSummaryScreen(state, onChange) {
     const lob = resumen.lobaResult.balances[p.id] || 0;
     const sf = resumen.stablefordResult.balances[p.id] || 0;
     const band = resumen.banderasResult.balances[p.id] || 0;
+    const tp = resumen.threePuttResult.balances[p.id] || 0;
+    const chu = resumen.chupesResult.balances[p.id] || 0;
 
     const filas = [];
     if (state.bets.individuales.enabled) filas.push(["Individuales", ind]);
@@ -1663,6 +1671,8 @@ function renderSummaryScreen(state, onChange) {
     if (state.bets.loba.enabled) filas.push(["Loba", lob]);
     if (state.bets.stableford.enabled) filas.push(["Stableford", sf]);
     if (state.bets.banderas.enabled) filas.push(["Banderas", band]);
+    if (state.bets.threePutt.enabled) filas.push(["3-putt", tp]);
+    if (state.bets.chupes.enabled) filas.push(["Chupes", chu]);
 
     const filasHtml = filas.map(([label, val], i) => `
       <div class="match-row" style="padding:6px 0;${i === filas.length - 1 ? "border-bottom:none" : ""}">

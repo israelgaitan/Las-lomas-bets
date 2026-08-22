@@ -856,7 +856,13 @@ function calcStableford(players, brutos, ventajas, par, montos, hoyoInicial) {
  *   quien no participa queda excluido del todo (ni cobra ni paga nada)
  * @returns {Object} { detalle: [...por hoyo y jugador...], balances: {id: monto neto} }
  */
-function calcBanderas(players, banderasState, monto, participantIds) {
+/**
+ * Genérica: cobra "cantidadFn(cfg)" unidades de "monto" al jugador que las
+ * tiene, pagando a CADA uno de los demás PARTICIPANTES de esta apuesta
+ * específica (no de todo el grupo). Si signo=1, quien tiene la cantidad
+ * COBRA (banderas); si signo=-1, quien la tiene PAGA (3-putt, chupes).
+ */
+function calcContadorPorHoyo(players, banderasState, monto, participantIds, cantidadFn, tipo, signo) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
   const detalle = [];
@@ -865,42 +871,34 @@ function calcBanderas(players, banderasState, monto, participantIds) {
 
   for (let h = 0; h < 18; h++) {
     participantes.forEach((p) => {
-      const cfg = banderasState[p.id][h];
+      const cfg = banderasState[p.id] && banderasState[p.id][h];
       if (!cfg) return;
+      const cantidad = cantidadFn(cfg);
+      if (!cantidad) return;
 
-      if (cfg.banderas > 0) {
-        const otros = participantes.filter((o) => o.id !== p.id);
-        const totalCobrado = monto * cfg.banderas;
-        otros.forEach((o) => {
-          balances[p.id] += totalCobrado;
-          balances[o.id] -= totalCobrado;
-        });
-        detalle.push({ hole: h + 1, playerId: p.id, tipo: "banderas", cantidad: cfg.banderas, monto: totalCobrado * otros.length });
-      } else if (cfg.threePutt) {
-        const otros = participantes.filter((o) => o.id !== p.id);
-        otros.forEach((o) => {
-          balances[p.id] -= monto;
-          balances[o.id] += monto;
-        });
-        detalle.push({ hole: h + 1, playerId: p.id, tipo: "3putt", cantidad: 1, monto: monto * otros.length });
-      }
-
-      // chupes: independientes de banderas/3-putt (pueden pasar el mismo
-      // hoyo), siempre negativos para quien los tiene, le paga a cada uno
-      // de los demás que juegan banderas ese día.
-      if (cfg.chupes > 0) {
-        const otros = participantes.filter((o) => o.id !== p.id);
-        const totalCobrado = monto * cfg.chupes;
-        otros.forEach((o) => {
-          balances[p.id] -= totalCobrado;
-          balances[o.id] += totalCobrado;
-        });
-        detalle.push({ hole: h + 1, playerId: p.id, tipo: "chupes", cantidad: cfg.chupes, monto: totalCobrado * otros.length });
-      }
+      const otros = participantes.filter((o) => o.id !== p.id);
+      const totalCobrado = monto * cantidad;
+      otros.forEach((o) => {
+        balances[p.id] += signo * totalCobrado;
+        balances[o.id] -= signo * totalCobrado;
+      });
+      detalle.push({ hole: h + 1, playerId: p.id, tipo, cantidad, monto: totalCobrado * otros.length });
     });
   }
 
   return { detalle, balances };
+}
+
+function calcBanderas(players, banderasState, monto, participantIds) {
+  return calcContadorPorHoyo(players, banderasState, monto, participantIds, (cfg) => cfg.banderas, "banderas", 1);
+}
+
+function calcThreePutt(players, banderasState, monto, participantIds) {
+  return calcContadorPorHoyo(players, banderasState, monto, participantIds, (cfg) => (cfg.threePutt ? 1 : 0), "3putt", -1);
+}
+
+function calcChupes(players, banderasState, monto, participantIds) {
+  return calcContadorPorHoyo(players, banderasState, monto, participantIds, (cfg) => cfg.chupes, "chupes", -1);
 }
 
 
@@ -1167,7 +1165,7 @@ function calcResumenHastaHoyo(state, posicionEnOrden) {
   Object.keys(recortado.banderas).forEach((playerId) => {
     for (let h = 0; h < 18; h++) {
       if (indicesJugados.has(h)) continue;
-      recortado.banderas[playerId][h] = { banderas: 0, threePutt: false };
+      recortado.banderas[playerId][h] = { banderas: 0, threePutt: false, chupes: 0 };
     }
   });
   for (let h = 0; h < 18; h++) {
@@ -1267,12 +1265,21 @@ function calcResumenGeneral(state) {
     balances[p.id] += stablefordResult.balances[p.id] || 0;
   });
 
-  // Banderas / 3-putt (marcado manual, no usa hándicap)
+  // Banderas / 3-putt / Chupes: 3 apuestas INDEPENDIENTES (cada una con su
+  // propio monto y sus propios participantes), marcado manual, no usa hándicap.
   const banderasResult = bets.banderas.enabled
     ? calcBanderas(players, state.banderas, bets.banderas.monto, bets.banderas.participantes)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
+  const threePuttResult = bets.threePutt.enabled
+    ? calcThreePutt(players, state.banderas, bets.threePutt.monto, bets.threePutt.participantes)
+    : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
+  const chupesResult = bets.chupes.enabled
+    ? calcChupes(players, state.banderas, bets.chupes.monto, bets.chupes.participantes)
+    : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
     balances[p.id] += banderasResult.balances[p.id];
+    balances[p.id] += threePuttResult.balances[p.id];
+    balances[p.id] += chupesResult.balances[p.id];
   });
 
   return {
@@ -1283,6 +1290,8 @@ function calcResumenGeneral(state) {
     lobaResult,
     stablefordResult,
     banderasResult,
+    threePuttResult,
+    chupesResult,
     balances,
   };
 }
