@@ -617,7 +617,6 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
   });
 
   let acumulado = 0; // extra acumulado por empates de 3+, se suma al monto base del siguiente hoyo JUGADO
-  let unidadesAcumuladas = 0; // unidad de "ganar el hoyo" pendiente por empates de 3+, se suma cuando alguien finalmente gane
 
   // El acumulado por empates de 3+ debe pasar al SIGUIENTE HOYO EN EL
   // ORDEN REAL DE JUEGO, no al siguiente número de hoyo — si no, un
@@ -651,27 +650,34 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
       ganadores.forEach((id) => (totalesPorJugador[id] += repartoPorGanador));
       perdedores.forEach((id) => (totalesPorJugador[id] -= montoVigente));
 
-      // 1 ganador limpio = 1 unidad (+ las que vinieran acumuladas de
-      // empates de 3+ previos); 2 empatados = 0.5 unidad cada uno (+ la
-      // mitad de las acumuladas cada uno)
-      const unidadVigente = 1 + unidadesAcumuladas;
-      const unidadPorGanador = unidadVigente / ganadores.length;
-      ganadores.forEach((id) => (unidadesPorJugador[id] += unidadPorGanador));
-      unidadesAcumuladas = 0;
+      // Rayas = dinero / monto BASE de skins (el que pusiste en Apuestas,
+      // sin contar acumulado por empates), para que 1 raya sea SIEMPRE el
+      // mismo valor en dinero y cuadre exacto con el total. Ganar limpio
+      // contra 3 rivales = 3 rayas (1 por cada uno que te paga). Empatar
+      // a 2 = 1 raya cada uno (el bote de 2 perdedores se reparte entre 2).
+      // Rayas = dinero / monto BASE de skins (el que pusiste en Apuestas,
+      // sin contar acumulado por empates), para que 1 raya sea SIEMPRE el
+      // mismo valor en dinero y cuadre exacto con el total. Ganar limpio
+      // contra 3 rivales = 3 rayas (1 por cada uno que te paga). Empatar
+      // a 2 = 1 raya cada uno (el bote de 2 perdedores se reparte entre 2).
+      if (montoPorHoyo > 0) {
+        ganadores.forEach((id) => (unidadesPorJugador[id] += repartoPorGanador / montoPorHoyo));
+        perdedores.forEach((id) => (unidadesPorJugador[id] -= montoVigente / montoPorHoyo));
+      }
 
       entry.montoCadaGanador = repartoPorGanador;
       acumulado = 0;
     } else {
-      // 3+ empatan: nadie cobra ni suma la unidad de "ganar el hoyo" todavía;
-      // tanto el dinero como la unidad se acumulan para el siguiente hoyo JUGADO
+      // 3+ empatan: nadie cobra ni suma rayas todavía; tanto el dinero
+      // como las rayas se acumulan para el siguiente hoyo JUGADO
       entry.acumulaSiguiente = true;
       acumulado = montoVigente;
-      unidadesAcumuladas += 1;
     }
 
-    // Eventos especiales: cobran el monto base de skins (no el vigente con
-    // acumulado) a cada uno de los demás, independiente de quién ganó el hoyo.
-    // Cada evento también suma 1 unidad al jugador que lo logró.
+    // Eventos especiales: cobran el monto base de skins a cada uno de los
+    // demás, independiente de quién ganó el hoyo. Las rayas del evento
+    // también van 1 por cada rival que paga (igual que ganar el hoyo), no
+    // 1 por evento — así siempre cuadra con el dinero real.
     const eventosHoyo = [];
     players.forEach((p) => {
       const cantEventos = contarEventosJugador(brutos[p.id][h], par[h], sandies[p.id][h], oyes[p.id][h], metidas[p.id][h]);
@@ -682,7 +688,8 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
           totalesPorJugador[p.id] += totalEvento;
           totalesPorJugador[o.id] -= totalEvento;
         });
-        unidadesPorJugador[p.id] += cantEventos;
+        unidadesPorJugador[p.id] += cantEventos * otros.length;
+        otros.forEach((o) => (unidadesPorJugador[o.id] -= cantEventos));
         eventosHoyo.push({ playerId: p.id, cantidad: cantEventos, monto: totalEvento * otros.length });
       }
     });
@@ -970,7 +977,11 @@ function pagarDiferenciaLoba(balances, unidadesDiff, montoBase, multiplicador, p
  */
 function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes, metidas, hoyoInicial) {
   const balances = {};
-  players.forEach((p) => (balances[p.id] = 0));
+  const unidadesPorJugador = {};
+  players.forEach((p) => {
+    balances[p.id] = 0;
+    unidadesPorJugador[p.id] = 0;
+  });
   const detalle = [];
 
   let acumulado = 0; // extra por empates de GOLPE, se suma al monto base del siguiente hoyo CONFIGURADO
@@ -980,6 +991,19 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
   // número de hoyo — si no, un empate en el hoyo 18 se "arrastraría" al
   // hoyo 19 (inexistente) en vez de al hoyo 1 si la ronda arranca en el 10.
   const orden = ordenDeJuego(hoyoInicial);
+
+  // Suma rayas = dinero real que ganó/perdió CADA jugador en este hoyo,
+  // dividido entre el monto BASE de Loba (sin multiplicador ni acumulado)
+  // — así 1 raya siempre vale exactamente el monto que pusiste en
+  // Apuestas, igual que en Skins, sin importar si el jugador va en la
+  // pareja (2 personas) o el trío (3 personas) ni el multiplicador del hoyo.
+  function sumarRayasPorDinero(antes) {
+    if (monto <= 0) return;
+    players.forEach((p) => {
+      const delta = balances[p.id] - antes[p.id];
+      if (delta !== 0) unidadesPorJugador[p.id] += delta / monto;
+    });
+  }
 
   orden.forEach((h) => {
     const cfg = lobaConfig[h];
@@ -1024,6 +1048,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       acumulado += monto * multiplicador;
     } else {
       const montoVigente = monto + acumulado;
+      const antesGolpe = { ...balances };
       // Yendo solo, el multiplicador significa RAYAS EXTRA por ganar el
       // hoyo (ej: multiplicador 2 = 2 rayas), no un multiplicador de
       // dinero — el monto de cada raya se queda fijo. En modo normal
@@ -1036,6 +1061,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
         const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
         boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, multiplicador, pareja, trio, vaSolo);
       }
+      sumarRayasPorDinero(antesGolpe);
       acumulado = 0;
     }
 
@@ -1053,15 +1079,9 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       0
     );
     const diffEventos = eventosPareja - eventosTrio;
+    const antesEventos = { ...balances };
     const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, vaSolo ? 1 : multiplicador, pareja, trio, vaSolo);
-
-    // diffUnidades combinado: solo informativo, para el contador de
-    // "unidades" que se ve en la app (golpe del hoyo + eventos juntos).
-    // Yendo solo, el golpe cuenta como "multiplicador" rayas (igual que en
-    // el dinero); en modo normal sigue siendo 1 raya.
-    const unidadesGolpeInfo = vaSolo ? multiplicador : 1;
-    const diffUnidades =
-      (golpeGanador === "pareja" ? unidadesGolpeInfo : golpeGanador === "trio" ? -unidadesGolpeInfo : 0) + diffEventos;
+    sumarRayasPorDinero(antesEventos);
 
     detalle.push({
       hole: h + 1,
@@ -1079,22 +1099,9 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       diffEventos,
       unidadesPareja: (golpeGanador === "pareja" ? 1 : 0) + eventosPareja,
       unidadesTrio: (golpeGanador === "trio" ? 1 : 0) + eventosTrio,
-      diffUnidades,
       totalBote: boteHoyo + boteEventos,
       acumulaSiguiente,
     });
-  });
-
-  // Unidades netas por jugador: en cada hoyo configurado y jugado, si el
-  // jugador estuvo en la "pareja" suma +diffUnidades, si estuvo en el
-  // "trio" suma -diffUnidades (sin multiplicador ni ×3, solo la diferencia
-  // cruda de unidades de ese hoyo, golpe + eventos juntos).
-  const unidadesPorJugador = {};
-  players.forEach((p) => (unidadesPorJugador[p.id] = 0));
-  detalle.forEach((d) => {
-    if (!d.jugado) return;
-    d.pareja.forEach((id) => (unidadesPorJugador[id] += d.diffUnidades));
-    d.trio.forEach((id) => (unidadesPorJugador[id] -= d.diffUnidades));
   });
 
   return { detalle, balances, unidadesPorJugador };
