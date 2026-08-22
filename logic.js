@@ -1199,19 +1199,13 @@ function calcResumenGeneral(state) {
     balances[r.b] -= r.saldoA;
   });
 
-  // Foursome (ventaja calculada por SUMA de hcp.foursome de cada pareja, no individual).
-  // Si rotarParejas está activo (y hay exactamente 4 participantes), se usa
-  // "segmentos" (3 bloques de 6 hoyos con pareja distinta) en vez de "crosses".
-  const usaRotacion = bets.foursome.enabled && bets.foursome.rotarParejas && bets.foursome.participantes.length === 4;
-  const fuentesForusome = usaRotacion ? bets.foursome.segmentos : bets.foursome.crosses;
+  // Foursome cruzado (ventaja calculada por SUMA de hcp.foursome de cada pareja, no individual)
   const ventajasForusome = bets.foursome.enabled
-    ? calcVentajasForusome(players, course.strokeIndex, fuentesForusome)
+    ? calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses)
     : {};
   const foursomeResults = bets.foursome.enabled
-    ? fuentesForusome.map((c) =>
-        usaRotacion
-          ? calcForusomeSegmento(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas)
-          : calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas)
+    ? bets.foursome.crosses.map((c) =>
+        calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.foursomeOyes, state.metidas, bets.foursome.unidadesActivas)
       )
     : [];
   foursomeResults.forEach((r) => {
@@ -1219,6 +1213,23 @@ function calcResumenGeneral(state) {
     // pareja COBRA EL MONTO COMPLETO del cruce, no se reparte entre los 2
     // (confirmado con ejemplo numérico: si el cruce da $500 a favor de la
     // base, CADA UNO de los 2 de la base cobra $500, no $250).
+    r.base.forEach((id) => (balances[id] += r.saldoTotal));
+    r.rival.forEach((id) => (balances[id] -= r.saldoTotal));
+  });
+
+  // Rotación de parejas cada 6 hoyos: modo INDEPENDIENTE de foursome
+  // cruzado, necesita exactamente 4 participantes propios.
+  const jugadoresRotacion = players.filter((p) => bets.rotacion.participantes.includes(p.id));
+  const rotacionActiva = bets.rotacion.enabled && jugadoresRotacion.length === 4;
+  const ventajasRotacion = rotacionActiva
+    ? calcVentajasForusome(jugadoresRotacion, course.strokeIndex, bets.rotacion.segmentos)
+    : {};
+  const rotacionResults = rotacionActiva
+    ? bets.rotacion.segmentos.map((seg) =>
+        calcForusomeSegmento(seg, scores, ventajasRotacion[seg.id], course.par, state.sandies, state.rotacionOyes, state.metidas, bets.rotacion.unidadesActivas)
+      )
+    : [];
+  rotacionResults.forEach((r) => {
     r.base.forEach((id) => (balances[id] += r.saldoTotal));
     r.rival.forEach((id) => (balances[id] -= r.saldoTotal));
   });
@@ -1286,6 +1297,7 @@ function calcResumenGeneral(state) {
     ventajas: calcGolpesVentaja(players, course.strokeIndex, "individuales"), // ventaja del grupo completo, solo informativa
     individualesResults,
     foursomeResults,
+    rotacionResults,
     skinsResult,
     lobaResult,
     stablefordResult,

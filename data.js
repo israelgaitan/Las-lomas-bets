@@ -248,6 +248,9 @@ function newState() {
     // Solo aplica en hoyos par 3; reemplaza el conteo automático de oyes
     // individual para la modalidad foursome específicamente.
     foursomeOyes: new Array(18).fill(null).map(() => ({})),
+    // igual que foursomeOyes pero para el modo independiente "Rotación de
+    // parejas cada 6 hoyos" (claves "S1"/"S2"/"S3" -> "base" | "rival" | null)
+    rotacionOyes: new Array(18).fill(null).map(() => ({})),
     // oyes manual de individuales: por hoyo, quién ganó el oyes en CADA
     // partido 1v1 (clave "menorId-mayorId" -> playerId del ganador | sin
     // entrada = sin marcar). Solo aplica en hoyos par 3. El ganador puede
@@ -284,11 +287,17 @@ function newState() {
           { id: "B", base: [1, 2], rival: [3, 5], montoIda: 0, montoVuelta: 0 },
           { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
         ],
-        // rotarParejas: solo aplica con EXACTAMENTE 4 participantes. En vez
-        // de 1 pareja fija los 18 hoyos, se cambia de pareja cada 6 hoyos,
-        // pasando por las 3 combinaciones posibles (así cada quien juega
-        // con cada quien 6 hoyos). Reemplaza a "crosses" mientras está activo.
-        rotarParejas: false,
+      },
+      // "Rotación de parejas cada 6 hoyos": modo INDEPENDIENTE de foursome
+      // cruzado. Necesita EXACTAMENTE 4 participantes. Cada 6 hoyos (en tu
+      // orden real de juego) cambia la pareja, pasando por las 3
+      // combinaciones posibles con esos 4 — así cada quien juega 6 hoyos
+      // con cada uno de los otros 3. La ventaja se calcula igual que en
+      // foursome (suma de hcp.foursome de la pareja vs la pareja rival).
+      rotacion: {
+        enabled: false,
+        unidadesActivas: true,
+        participantes: [1, 2, 3, 4],
         segmentos: [
           { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 0 },
           { id: "S2", hoyos: [6, 7, 8, 9, 10, 11], base: [1, 3], rival: [2, 4], monto: 0 },
@@ -469,16 +478,38 @@ function migrateState(state) {
   if (!state.round.hoyoInicial) {
     state.round.hoyoInicial = 1;
   }
-  if (!state.bets.foursome.segmentos || state.bets.foursome.segmentos.some((s) => !s.hoyos)) {
+  // "Rotación de parejas" era una opción DENTRO de foursome (rotarParejas);
+  // ahora es su propio modo independiente (bets.rotacion). Si el estado
+  // guardado todavía trae esa config vieja adentro de foursome, la
+  // movemos para no perder lo que ya tenían armado, y la quitamos de
+  // foursome (que vuelve a ser solo el cruzado de siempre).
+  if (state.bets.foursome.rotarParejas !== undefined || state.bets.foursome.segmentos) {
+    if (!state.bets.rotacion) {
+      state.bets.rotacion = {
+        enabled: !!state.bets.foursome.rotarParejas,
+        unidadesActivas: state.bets.foursome.unidadesActivas,
+        participantes: state.bets.foursome.participantes.length === 4 ? [...state.bets.foursome.participantes] : [1, 2, 3, 4],
+        segmentos: state.bets.foursome.segmentos || [],
+      };
+    }
+    delete state.bets.foursome.rotarParejas;
+    delete state.bets.foursome.segmentos;
+  }
+  if (!state.bets.rotacion) {
+    state.bets.rotacion = {
+      enabled: false,
+      unidadesActivas: true,
+      participantes: [1, 2, 3, 4],
+      segmentos: [],
+    };
+  }
+  if (!state.bets.rotacion.segmentos || state.bets.rotacion.segmentos.length === 0 || state.bets.rotacion.segmentos.some((s) => !s.hoyos)) {
     // versiones viejas guardaban desde/hasta en vez de la lista de hoyos
-    state.bets.foursome.segmentos = generarSegmentosRotacion(
-      state.bets.foursome.participantes.slice(0, 4),
-      state.bets.foursome.segmentos,
+    state.bets.rotacion.segmentos = generarSegmentosRotacion(
+      state.bets.rotacion.participantes.slice(0, 4),
+      state.bets.rotacion.segmentos,
       state.round.hoyoInicial
     );
-  }
-  if (state.bets.foursome.rotarParejas === undefined) {
-    state.bets.foursome.rotarParejas = false;
   }
   if (!state.banderas) {
     state.banderas = {};
@@ -492,6 +523,9 @@ function migrateState(state) {
   });
   if (!state.foursomeOyes) {
     state.foursomeOyes = new Array(18).fill(null).map(() => ({}));
+  }
+  if (!state.rotacionOyes) {
+    state.rotacionOyes = new Array(18).fill(null).map(() => ({}));
   }
   if (!state.individualesOyes) {
     state.individualesOyes = new Array(18).fill(null).map(() => ({}));
