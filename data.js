@@ -292,11 +292,9 @@ function newState() {
         enabled: true,
         // monto base por jugador (como el "$100" del ejemplo)
         monto: 0,
-        // qué % del hándicap (relativo al más bajo del grupo) se usa para
-        // repartir ventaja en Loba. Algunos clubes juegan con el hcp
-        // recortado al 80%; otros al 100% (igual que las demás
-        // modalidades). Editable en Apuestas → Loba.
-        porcentajeHcp: 0.8,
+        // Loba usa el hcp completo (100%), igual que las demás
+        // modalidades — si un club quiere jugarlo recortado, que ajuste
+        // el hándicap de Loba de cada jugador directamente en Config.
       },
       stableford: {
         enabled: true,
@@ -425,10 +423,9 @@ function migrateState(state) {
     // default true para no cambiarle el juego a nadie que ya lo tenía configurado
     state.bets.foursome.unidadesActivas = true;
   }
-  if (state.bets.loba.porcentajeHcp === undefined) {
-    // default 0.8 (80%), que es como ya venía funcionando la app hasta ahora
-    state.bets.loba.porcentajeHcp = 0.8;
-  }
+  // ya no se usa un % recortado de hándicap para Loba (se quitó la opción);
+  // si algún estado guardado todavía lo trae, simplemente se ignora en el
+  // cálculo (calcGolpesVentaja usa 100% si no se le pasa porcentaje).
   if (!state.bets.foursome.participantes) {
     state.bets.foursome.participantes = state.players.map((p) => p.id);
   }

@@ -607,8 +607,8 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, foursomeO
  * Calcula los skins ganados/perdidos por cada jugador a través de los 18 hoyos.
  * @returns {Object} { porHoyo: [...], totalesPorJugador: {id: monto neto}, montoPendiente }
  */
-function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, metidas) {
-  const porHoyo = [];
+function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, metidas, hoyoInicial) {
+  const porHoyo = new Array(18).fill(null);
   const totalesPorJugador = {};
   const unidadesPorJugador = {};
   players.forEach((p) => {
@@ -616,17 +616,23 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
     unidadesPorJugador[p.id] = 0;
   });
 
-  let acumulado = 0; // extra acumulado por empates de 3+, se suma al monto base del siguiente hoyo
+  let acumulado = 0; // extra acumulado por empates de 3+, se suma al monto base del siguiente hoyo JUGADO
   let unidadesAcumuladas = 0; // unidad de "ganar el hoyo" pendiente por empates de 3+, se suma cuando alguien finalmente gane
 
-  for (let h = 0; h < 18; h++) {
+  // El acumulado por empates de 3+ debe pasar al SIGUIENTE HOYO EN EL
+  // ORDEN REAL DE JUEGO, no al siguiente número de hoyo — si no, un
+  // empate en el hoyo 18 se "arrastraría" al hoyo 19 (que no existe) en
+  // vez de al hoyo 1, si la ronda arranca en el 10.
+  const orden = ordenDeJuego(hoyoInicial);
+
+  orden.forEach((h) => {
     const netos = players
       .map((p) => ({ id: p.id, neto: golpeNeto(brutos, ventajas, p.id, h) }))
       .filter((x) => x.neto !== null);
 
     if (netos.length === 0) {
-      porHoyo.push({ hole: h + 1, jugado: false });
-      continue;
+      porHoyo[h] = { hole: h + 1, jugado: false };
+      return;
     }
 
     const montoVigente = montoPorHoyo + acumulado;
@@ -657,7 +663,7 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
       acumulado = 0;
     } else {
       // 3+ empatan: nadie cobra ni suma la unidad de "ganar el hoyo" todavía;
-      // tanto el dinero como la unidad se acumulan para el siguiente hoyo
+      // tanto el dinero como la unidad se acumulan para el siguiente hoyo JUGADO
       entry.acumulaSiguiente = true;
       acumulado = montoVigente;
       unidadesAcumuladas += 1;
@@ -682,8 +688,8 @@ function calcSkins(players, brutos, ventajas, montoPorHoyo, par, sandies, oyes, 
     });
     if (eventosHoyo.length > 0) entry.eventosHoyo = eventosHoyo;
 
-    porHoyo.push(entry);
-  }
+    porHoyo[h] = entry;
+  });
 
   return { porHoyo, totalesPorJugador, unidadesPorJugador, montoPendiente: acumulado };
 }
@@ -962,18 +968,24 @@ function pagarDiferenciaLoba(balances, unidadesDiff, montoBase, multiplicador, p
  *   con el monto base (sin el acumulado) — igual que birdie/sandy pagan en
  *   Individuales. Ganar el oyes no "rompe" el empate del bote del hoyo.
  */
-function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes, metidas) {
+function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oyes, metidas, hoyoInicial) {
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
   const detalle = [];
 
   let acumulado = 0; // extra por empates de GOLPE, se suma al monto base del siguiente hoyo CONFIGURADO
 
-  for (let h = 0; h < 18; h++) {
+  // igual que en Skins: el acumulado por empate de golpe debe pasar al
+  // siguiente hoyo CONFIGURADO en el ORDEN REAL DE JUEGO, no al siguiente
+  // número de hoyo — si no, un empate en el hoyo 18 se "arrastraría" al
+  // hoyo 19 (inexistente) en vez de al hoyo 1 si la ronda arranca en el 10.
+  const orden = ordenDeJuego(hoyoInicial);
+
+  orden.forEach((h) => {
     const cfg = lobaConfig[h];
     if (!cfg || !cfg.loba || !cfg.companero) {
       detalle.push({ hole: h + 1, configurado: false });
-      continue;
+      return;
     }
 
     const vaSolo = cfg.companero === "solo";
@@ -989,7 +1001,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 
     if (netosPareja.length < pareja.length || netosTrio.length < trio.length) {
       detalle.push({ hole: h + 1, configurado: true, jugado: false, pareja, trio, vaSolo });
-      continue;
+      return;
     }
 
     const mejorPareja = Math.min(...netosPareja);
@@ -1071,7 +1083,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       totalBote: boteHoyo + boteEventos,
       acumulaSiguiente,
     });
-  }
+  });
 
   // Unidades netas por jugador: en cada hoyo configurado y jugado, si el
   // jugador estuvo en la "pareja" suma +diffUnidades, si estuvo en el
@@ -1208,7 +1220,7 @@ function calcResumenGeneral(state) {
   const jugadoresSkins = players.filter((p) => bets.skins.participantes.includes(p.id));
   const ventajasSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
   const skinsResult = bets.skins.enabled && jugadoresSkins.length >= 2
-    ? calcSkins(jugadoresSkins, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes, state.metidas)
+    ? calcSkins(jugadoresSkins, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, state.oyes, state.metidas, round.hoyoInicial)
     : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
   players.forEach((p) => {
     balances[p.id] += skinsResult.totalesPorJugador[p.id] || 0;
@@ -1217,9 +1229,9 @@ function calcResumenGeneral(state) {
   // Loba (hándicap propio de esta modalidad, además recortado al 80%).
   // Incluye además el cobro por birdie/águila/hoyo en uno/sandy/oyes de
   // cualquiera de los jugadores del equipo.
-  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba", bets.loba.porcentajeHcp || 0.8);
+  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba");
   const lobaResult = bets.loba.enabled
-    ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes, state.metidas)
+    ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, state.oyes, state.metidas, round.hoyoInicial)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
   players.forEach((p) => {
     balances[p.id] += lobaResult.balances[p.id];
