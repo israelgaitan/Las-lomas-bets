@@ -984,12 +984,26 @@ function renderHoleScreen(state, onChange) {
 
     const filasHtml = filas.map(([label, val, unidades, tipo]) => {
       const esPuntos = tipo === "puntos";
-      const valorTxt = esPuntos ? `${val} pts` : fmtMoney(val);
-      const claseColor = esPuntos ? "" : moneyClass(val);
+      let valorTxt;
+      let claseColor;
+      if (esPuntos) {
+        valorTxt = `${val} pts`;
+        claseColor = "";
+      } else if (unidades !== null && unidades !== undefined) {
+        // en el desglose por hoyo mostramos RAYAS, no dinero (el dinero
+        // final ya se ve en el total de arriba y en la pestaña Resumen)
+        const redondeado = Math.round(unidades * 10) / 10; // por los 0.5 de empates en skins
+        valorTxt = `${redondeado > 0 ? "+" : ""}${redondeado}`;
+        claseColor = moneyClass(unidades);
+      } else {
+        // sin concepto de "rayas" (ej. Banderas): se queda en dinero
+        valorTxt = fmtMoney(val);
+        claseColor = moneyClass(val);
+      }
       return `
-        <div class="match-row" style="padding:3px 0">
-          <span class="match-row__names" style="font-size:11px;opacity:0.7">${label}</span>
-          <span class="match-row__amount ${claseColor}" style="font-size:11px">${valorTxt}${unidadesTxt(unidades)}</span>
+        <div class="match-row" style="padding:4px 0">
+          <span class="match-row__names" style="font-size:13px;opacity:0.7">${label}</span>
+          <span class="match-row__amount ${claseColor}" style="font-size:15px;font-weight:600">${valorTxt}</span>
         </div>
       `;
     }).join("");
