@@ -884,6 +884,19 @@ function calcBanderas(players, banderasState, monto, participantIds) {
         });
         detalle.push({ hole: h + 1, playerId: p.id, tipo: "3putt", cantidad: 1, monto: monto * otros.length });
       }
+
+      // chupes: independientes de banderas/3-putt (pueden pasar el mismo
+      // hoyo), siempre negativos para quien los tiene, le paga a cada uno
+      // de los demás que juegan banderas ese día.
+      if (cfg.chupes > 0) {
+        const otros = participantes.filter((o) => o.id !== p.id);
+        const totalCobrado = monto * cfg.chupes;
+        otros.forEach((o) => {
+          balances[p.id] -= totalCobrado;
+          balances[o.id] += totalCobrado;
+        });
+        detalle.push({ hole: h + 1, playerId: p.id, tipo: "chupes", cantidad: cfg.chupes, monto: totalCobrado * otros.length });
+      }
     });
   }
 

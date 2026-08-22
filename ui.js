@@ -708,6 +708,14 @@ function renderHoleScreen(state, onChange) {
             <button class="event-toggle ${banderasCfg.threePutt ? "active" : ""}" data-act="threeputt">3-putt</button>
           </div>
         </div>
+        <div class="player-row__controls" style="margin-top:8px">
+          <div class="stepper">
+            <button class="stepper__btn" data-act="chupes-minus">−</button>
+            <span class="stepper__value ${banderasCfg.chupes === 0 ? "empty" : ""}" data-role="chupes-value" style="font-size:16px">🥤${banderasCfg.chupes}</span>
+            <button class="stepper__btn" data-act="chupes-plus">+</button>
+          </div>
+          <p class="help-text" style="margin:0">Chupes (siempre negativo, le paga a cada uno de los demás)</p>
+        </div>
         ` : ""}
       </div>
     `);
@@ -763,6 +771,20 @@ function renderHoleScreen(state, onChange) {
       threePuttBtn.addEventListener("click", () => {
         banderasCfg.threePutt = !banderasCfg.threePutt;
         if (banderasCfg.threePutt) banderasCfg.banderas = 0; // mutuamente excluyentes
+        onChange(state);
+      });
+    }
+    const chupesMinusBtn = row.querySelector('[data-act="chupes-minus"]');
+    if (chupesMinusBtn) {
+      chupesMinusBtn.addEventListener("click", () => {
+        banderasCfg.chupes = Math.max(0, banderasCfg.chupes - 1);
+        onChange(state);
+      });
+    }
+    const chupesPlusBtn = row.querySelector('[data-act="chupes-plus"]');
+    if (chupesPlusBtn) {
+      chupesPlusBtn.addEventListener("click", () => {
+        banderasCfg.chupes += 1;
         onChange(state);
       });
     }
@@ -1468,7 +1490,7 @@ function renderBetsScreen(state, onChange) {
       bandCard.appendChild(el(`<p class="help-text">Sin banderas ni 3-putts registrados todavía.</p>`));
     } else {
       resumen.banderasResult.detalle.slice().reverse().forEach((d) => {
-        const txt = d.tipo === "banderas" ? `🚩×${d.cantidad}` : "3-putt";
+        const txt = d.tipo === "banderas" ? `🚩×${d.cantidad}` : d.tipo === "chupes" ? `🥤×${d.cantidad}` : "3-putt";
         bandCard.appendChild(el(`
           <div class="match-row">
             <span class="match-row__names">H${d.hole} · ${playerName(state, d.playerId)} · ${txt}</span>

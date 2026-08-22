@@ -153,8 +153,10 @@ function emptySandyFlags() {
 }
 
 function emptyBanderasFlags() {
-  // 18 posiciones: { banderas: 0 (sin marcar), threePutt: false }
-  return new Array(18).fill(null).map(() => ({ banderas: 0, threePutt: false }));
+  // 18 posiciones: { banderas: 0 (sin marcar), threePutt: false, chupes: 0 }
+  // chupes: putts cortos fallados (siempre negativo, como banderas pero
+  // al revés — se paga a CADA uno de los demás que juegan banderas ese día)
+  return new Array(18).fill(null).map(() => ({ banderas: 0, threePutt: false, chupes: 0 }));
 }
 
 function emptyLobaHoyo() {
@@ -465,6 +467,12 @@ function migrateState(state) {
     state.banderas = {};
     state.players.forEach((p) => (state.banderas[p.id] = emptyBanderasFlags()));
   }
+  // estados guardados antes de "chupes" no tienen ese campo en cada hoyo
+  Object.keys(state.banderas).forEach((id) => {
+    state.banderas[id].forEach((cfg) => {
+      if (cfg.chupes === undefined) cfg.chupes = 0;
+    });
+  });
   if (!state.foursomeOyes) {
     state.foursomeOyes = new Array(18).fill(null).map(() => ({}));
   }
