@@ -121,7 +121,7 @@ function renderConfigScreen(state, onChange) {
               </div>
               <button class="btn btn-ghost btn-small" data-act="delete-friend" style="padding:8px 10px;flex-shrink:0">✕</button>
             </div>
-            <p class="help-text" style="margin:4px 0 0">Individuales histórico: <span class="${moneyClass(f.individualesTotal)}">${fmtMoney(f.individualesTotal)}</span></p>
+            <p class="help-text" style="margin:4px 0 0">Total histórico contra ti: <span class="${moneyClass(f.individualesTotal + f.foursomeTotal)}">${fmtMoney(f.individualesTotal + f.foursomeTotal)}</span> <span style="opacity:0.6">(Individuales ${fmtMoney(f.individualesTotal)} · Foursome ${fmtMoney(f.foursomeTotal)})</span></p>
           </div>
         `);
         row.querySelector('[data-role="friend-name"]').addEventListener("input", (e) => {

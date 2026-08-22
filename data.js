@@ -127,7 +127,19 @@ function defaultPlayer(id, name) {
 // historial (ver archivarRonda en logic.js). individualesHistorial guarda
 // el detalle ronda por ronda.
 function defaultFriend(id, name) {
-  return { id, name, biblia: 0, individualesTotal: 0, individualesHistorial: [] };
+  return {
+    id,
+    name,
+    biblia: 0,
+    individualesTotal: 0,
+    individualesHistorial: [],
+    // igual que individualesTotal pero para Foursome (también es pareja
+    // vs pareja, así que sí se puede atribuir "contra" un amigo). Skins,
+    // Loba, Stableford y Banderas NO se guardan por amigo porque son bote
+    // de grupo, no 1v1 ni pareja vs pareja.
+    foursomeTotal: 0,
+    foursomeHistorial: [],
+  };
 }
 
 function emptyHoleScores() {
@@ -474,6 +486,8 @@ function migrateState(state) {
   state.friends.forEach((f) => {
     if (f.individualesTotal === undefined) f.individualesTotal = 0;
     if (!f.individualesHistorial) f.individualesHistorial = [];
+    if (f.foursomeTotal === undefined) f.foursomeTotal = 0;
+    if (!f.foursomeHistorial) f.foursomeHistorial = [];
   });
   if (state.miPlayerId === undefined) {
     state.miPlayerId = state.players[0] ? state.players[0].id : 1;

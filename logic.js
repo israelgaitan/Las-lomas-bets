@@ -1312,6 +1312,28 @@ function archivarRonda(state) {
     });
   }
 
+  // 1b. Foursome contra cada amigo que haya sido rival mío en algún cruce
+  // (si el amigo fue mi COMPAÑERO de pareja, no se cuenta "contra" él).
+  // El monto se cuenta COMPLETO contra cada rival del otro equipo, igual
+  // que se cobra completo entre jugadores (no se divide entre los 2 rivales).
+  if (state.bets.foursome.enabled) {
+    resumen.foursomeResults.forEach((r) => {
+      const yoEnBase = r.base.includes(yo);
+      const yoEnRival = r.rival.includes(yo);
+      if (!yoEnBase && !yoEnRival) return; // no soy parte de este cruce
+      const rivalIds = yoEnBase ? r.rival : r.base;
+      const montoParaMi = yoEnBase ? r.saldoTotal : -r.saldoTotal;
+      rivalIds.forEach((rivalId) => {
+        const rivalPlayer = state.players.find((p) => p.id === rivalId);
+        if (!rivalPlayer || !rivalPlayer.friendId) return;
+        const friend = state.friends.find((f) => f.id === rivalPlayer.friendId);
+        if (!friend) return;
+        friend.foursomeTotal += montoParaMi;
+        friend.foursomeHistorial.push({ fecha, monto: montoParaMi, courseName: course.name });
+      });
+    });
+  }
+
   // 2. Saldo total del día (todas las modalidades activas), guardado en el historial general
   state.roundsHistory.push({
     id: "r" + Date.now(),
