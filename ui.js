@@ -1607,8 +1607,8 @@ function renderSummaryScreen(state, onChange) {
     const bal = resumen.balances[p.id];
     wrap.appendChild(el(`
       <div class="balance-row">
-        <span class="balance-row__name">${p.name}</span>
-        <span class="balance-row__amount ${moneyClass(bal)}">${fmtMoney(bal)}</span>
+        <span class="balance-row__name" style="font-size:16px">${p.name}</span>
+        <span class="balance-row__amount ${moneyClass(bal)}" style="font-size:18px">${fmtMoney(bal)}</span>
       </div>
     `));
   });
@@ -1643,15 +1643,15 @@ function renderSummaryScreen(state, onChange) {
     if (state.bets.banderas.enabled) filas.push(["Banderas", band]);
 
     const filasHtml = filas.map(([label, val], i) => `
-      <div class="match-row" style="padding:4px 0;${i === filas.length - 1 ? "border-bottom:none" : ""}">
-        <span class="match-row__names" style="font-size:12px;opacity:0.7">${label}</span>
-        <span class="match-row__amount ${moneyClass(val)}" style="font-size:12px">${fmtMoney(val)}</span>
+      <div class="match-row" style="padding:6px 0;${i === filas.length - 1 ? "border-bottom:none" : ""}">
+        <span class="match-row__names" style="font-size:15px;opacity:0.75">${label}</span>
+        <span class="match-row__amount ${moneyClass(val)}" style="font-size:16px;font-weight:600">${fmtMoney(val)}</span>
       </div>
     `).join("");
 
     breakdown.appendChild(el(`
-      <div style="margin-bottom:14px">
-        <p style="font-weight:600;font-size:13px;margin:0 0 6px">${p.name}</p>
+      <div style="margin-bottom:16px">
+        <p style="font-weight:700;font-size:16px;margin:0 0 6px">${p.name}</p>
         ${filasHtml}
       </div>
     `));
@@ -1675,9 +1675,9 @@ function renderSummaryScreen(state, onChange) {
       .forEach((r) => {
         const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
         histCard.appendChild(el(`
-          <div class="match-row" style="padding:6px 0">
-            <span class="match-row__names" style="font-size:12px">${fechaFmt} · ${r.courseName}</span>
-            <span class="match-row__amount ${moneyClass(r.balanceYo)}" style="font-size:12px">${fmtMoney(r.balanceYo)}</span>
+          <div class="match-row" style="padding:7px 0">
+            <span class="match-row__names" style="font-size:14px">${fechaFmt} · ${r.courseName}</span>
+            <span class="match-row__amount ${moneyClass(r.balanceYo)}" style="font-size:15px;font-weight:600">${fmtMoney(r.balanceYo)}</span>
           </div>
         `));
       });
