@@ -599,6 +599,9 @@ function migrateState(state) {
       m.montoVuelta = m.monto || 0;
       delete m.monto;
     }
+    if (m.ventajaManual === undefined) {
+      m.ventajaManual = null;
+    }
   });
   // migrar cruces de foursome viejos (montoAlta/montoBaja) al nuevo esquema
   // por vuelta (montoIda/montoVuelta, mismo valor para alta y baja)

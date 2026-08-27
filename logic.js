@@ -145,7 +145,7 @@ function generarTodosVsTodos(participantIds) {
   const matches = [];
   for (let i = 0; i < participantIds.length; i++) {
     for (let j = i + 1; j < participantIds.length; j++) {
-      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0 });
+      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0, ventajaManual: null });
     }
   }
   return matches;
@@ -399,8 +399,15 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
 }
 
 /**
- * @param {Object} match - {a, b, montoIda, montoVuelta}
+ * @param {Object} match - {a, b, montoIda, montoVuelta, ventajaManual}
+ *   ventajaManual = {jugador: playerId, golpes: number} | null. Si está
+ *   puesto, REEMPLAZA el hándicap automático SOLO para este partido
+ *   específico (útil para "biblia": acuerdos históricos con un rival en
+ *   particular que no siguen el hándicap calculado). Si es null, se usa
+ *   el hándicap normal (relativo al grupo, calculado por calcGolpesVentaja).
  * @param {Array<number>} par - par de cada hoyo de la cancha activa
+ * @param {Array<number>} strokeIndex - hándicap de cada hoyo de la cancha,
+ *   necesario para repartir la ventaja manual en los hoyos correctos.
  * @param {Object} sandies - { [playerId]: [18 booleanos] }
  * @param {Array} individualesOyesPorHoyo - 18 posiciones { [matchKey]: playerId
  *   del ganador del oyes en ESE partido específico }, marcado MANUAL por
@@ -415,15 +422,31 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
  * ganó el oyes manual de ESTE partido. Se cobra la DIFERENCIA de unidades
  * entre los 2, multiplicada por el monto de esa vuelta.
  */
-function calcIndividual(match, brutos, ventajas, par, sandies, individualesOyesPorHoyo, metidas) {
+function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, individualesOyesPorHoyo, metidas) {
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
   let holesCounted = 0;
   const key = matchKey(match.a, match.b);
 
+  // Ventaja de ESTE partido en particular: si hay ventajaManual, se
+  // reemplaza el hándicap automático solo aquí (no afecta los demás
+  // partidos de match.a ni match.b contra otros rivales).
+  let ventajasA = ventajas[match.a];
+  let ventajasB = ventajas[match.b];
+  if (match.ventajaManual && match.ventajaManual.jugador && match.ventajaManual.golpes > 0) {
+    const golpesManual = repartirGolpesPorDificultad(match.ventajaManual.golpes, strokeIndex);
+    if (match.ventajaManual.jugador === match.a) {
+      ventajasA = golpesManual;
+      ventajasB = new Array(18).fill(0);
+    } else if (match.ventajaManual.jugador === match.b) {
+      ventajasB = golpesManual;
+      ventajasA = new Array(18).fill(0);
+    }
+  }
+
   for (let h = 0; h < 18; h++) {
-    const na = golpeNeto(brutos, ventajas, match.a, h);
-    const nb = golpeNeto(brutos, ventajas, match.b, h);
+    const na = golpeNeto(brutos, { [match.a]: ventajasA }, match.a, h);
+    const nb = golpeNeto(brutos, { [match.b]: ventajasB }, match.b, h);
 
     if (na === null || nb === null) {
       holeResults.push({ hole: h + 1, jugado: false });
@@ -1223,7 +1246,7 @@ function calcResumenGeneral(state) {
     ? bets.individuales.matches.map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
         const ventajasPartido = calcGolpesVentaja(jugadoresPartido, course.strokeIndex, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, state.sandies, state.individualesOyes, state.metidas);
+        return calcIndividual(m, scores, ventajasPartido, course.par, course.strokeIndex, state.sandies, state.individualesOyes, state.metidas);
       })
     : [];
   individualesResults.forEach((r) => {

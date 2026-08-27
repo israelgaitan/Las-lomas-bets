@@ -1183,10 +1183,13 @@ function renderBetsScreen(state, onChange) {
 
   resumen.individualesResults.forEach((r, idx) => {
     const match = state.bets.individuales.matches[idx];
+    const nombreA = playerName(state, r.a);
+    const nombreB = playerName(state, r.b);
+    const vm = match.ventajaManual;
     const matchBlock = el(`
       <div style="margin-bottom:14px;border-bottom:1px solid var(--linea);padding-bottom:12px">
         <div class="match-row" style="border-bottom:none;padding-bottom:6px">
-          <span class="match-row__names">${playerName(state, r.a)}<span class="match-row__vs">vs</span>${playerName(state, r.b)}</span>
+          <span class="match-row__names">${nombreA}<span class="match-row__vs">vs</span>${nombreB}</span>
           <span class="match-row__amount ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
         </div>
         <div class="field-row">
@@ -1199,6 +1202,20 @@ function renderBetsScreen(state, onChange) {
             <input type="number" value="${match.montoVuelta}" data-role="match-vuelta" />
           </div>
         </div>
+        <div class="field" style="margin-bottom:6px">
+          <label>Ventaja de este partido (biblia) — reemplaza el hándicap automático</label>
+          <select data-role="vm-jugador" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+            <option value="" ${!vm ? "selected" : ""}>Usar hándicap automático</option>
+            <option value="${r.a}" ${vm && vm.jugador === r.a ? "selected" : ""}>${nombreA} recibe ventaja</option>
+            <option value="${r.b}" ${vm && vm.jugador === r.b ? "selected" : ""}>${nombreB} recibe ventaja</option>
+          </select>
+        </div>
+        ${vm ? `
+        <div class="field" style="margin-bottom:6px">
+          <label>Golpes de ventaja para ${vm.jugador === r.a ? nombreA : nombreB}</label>
+          <input type="number" value="${vm.golpes}" data-role="vm-golpes" min="0" />
+        </div>
+        ` : ""}
         <button class="btn btn-ghost btn-small" data-role="match-delete" style="width:100%">Eliminar partido</button>
       </div>
     `);
@@ -1212,6 +1229,22 @@ function renderBetsScreen(state, onChange) {
       onChange(state, { skipRender: true });
     });
     matchBlock.querySelector('[data-role="match-vuelta"]').addEventListener("change", () => onChange(state));
+    matchBlock.querySelector('[data-role="vm-jugador"]').addEventListener("change", (e) => {
+      if (e.target.value === "") {
+        match.ventajaManual = null;
+      } else {
+        match.ventajaManual = { jugador: parseInt(e.target.value), golpes: (match.ventajaManual && match.ventajaManual.golpes) || 1 };
+      }
+      onChange(state);
+    });
+    const vmGolpesInput = matchBlock.querySelector('[data-role="vm-golpes"]');
+    if (vmGolpesInput) {
+      vmGolpesInput.addEventListener("input", (e) => {
+        match.ventajaManual.golpes = Math.max(0, parseInt(e.target.value) || 0);
+        onChange(state, { skipRender: true });
+      });
+      vmGolpesInput.addEventListener("change", () => onChange(state));
+    }
     matchBlock.querySelector('[data-role="match-delete"]').addEventListener("click", () => {
       state.bets.individuales.matches.splice(idx, 1);
       onChange(state);
@@ -1246,7 +1279,7 @@ function renderBetsScreen(state, onChange) {
       alert("Elige 2 jugadores distintos para crear el partido.");
       return;
     }
-    state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta });
+    state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta, ventajaManual: null });
     onChange(state);
   });
   wrap.appendChild(indCard);
