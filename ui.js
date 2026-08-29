@@ -1733,14 +1733,25 @@ function renderSummaryScreen(state, onChange) {
       const filaPts = el(`<tr style="border-bottom:1px solid var(--linea)"></tr>`);
       filaPts.appendChild(el(`<td style="${puntosCellStyle};text-align:left">pts</td>`));
       const puntosPorHoyo = resumen.stablefordResult.puntosPorHoyo[p.id];
-      const t = resumen.stablefordResult.totales[p.id];
+      // El OUT/IN de esta tarjeta son los hoyos FÍSICOS 1-9 / 10-18 (las
+      // columnas que se ven), no la "ida"/"vuelta" de la apuesta de
+      // Stableford (que sigue tu ORDEN DE JUEGO real y puede ser distinta
+      // si arrancas en el hoyo 10) — por eso se suman aparte aquí en vez
+      // de usar totales[p.id].ida/vuelta.
+      let sumaOut = 0;
+      let jugadosOut = 0;
+      let sumaIn = 0;
+      let jugadosIn = 0;
       for (let h = 0; h < 18; h++) {
         const pts = puntosPorHoyo[h];
         filaPts.appendChild(el(`<td style="${puntosCellStyle}">${pts !== null ? pts : "—"}</td>`));
-        if (h === 8) filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.ida.jugados > 0 ? t.ida.total : "—"}</td>`));
+        if (pts !== null) {
+          if (h < 9) { sumaOut += pts; jugadosOut++; } else { sumaIn += pts; jugadosIn++; }
+        }
+        if (h === 8) filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${jugadosOut > 0 ? sumaOut : "—"}</td>`));
       }
-      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.vuelta.jugados > 0 ? t.vuelta.total : "—"}</td>`));
-      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${t.total.jugados > 0 ? t.total.total : "—"}</td>`));
+      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${jugadosIn > 0 ? sumaIn : "—"}</td>`));
+      filaPts.appendChild(el(`<td style="${puntosCellStyle};font-weight:700">${(jugadosOut + jugadosIn) > 0 ? sumaOut + sumaIn : "—"}</td>`));
       table.appendChild(filaPts);
     }
   });
