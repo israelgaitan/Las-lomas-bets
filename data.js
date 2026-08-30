@@ -191,7 +191,7 @@ function newState() {
     // logic.js): [{ id, fecha, courseName, balanceYo, desglose }]
     roundsHistory: [],
     players: [
-      defaultPlayer(1, "Israel"),
+      defaultPlayer(1, "Jugador 1"),
       defaultPlayer(2, "Jugador 2"),
       defaultPlayer(3, "Jugador 3"),
       defaultPlayer(4, "Jugador 4"),

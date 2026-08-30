@@ -228,13 +228,6 @@ function renderConfigScreen(state, onChange) {
   `);
   yoCard.querySelector('[data-role="yo-select"]').addEventListener("change", (e) => {
     state.miPlayerId = parseInt(e.target.value);
-    const yo = state.players.find((p) => p.id === state.miPlayerId);
-    // si el jugador todavía tiene el nombre por default ("Jugador N"), lo
-    // renombramos solo a "Israel"; si ya lo habías cambiado a otra cosa,
-    // no lo tocamos.
-    if (yo && /^Jugador \d$/.test(yo.name)) {
-      yo.name = "Israel";
-    }
     onChange(state);
   });
   wrap.appendChild(yoCard);
