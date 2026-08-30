@@ -172,6 +172,12 @@ function newState() {
       // sigue siendo el de la cancha, y los montos ida/vuelta siguen
       // ligados a los hoyos 1-9 / 10-18 reales, no al orden de juego.
       hoyoInicial: 1,
+      // fecha en que ARRANCÓ esta ronda (se fija una sola vez, al crear el
+      // estado). Se usa para el historial al resetear/guardar la ronda, en
+      // vez de usar la fecha en la que se borra — así una ronda que
+      // empezaste el sábado no aparece guardada con fecha del domingo
+      // solo porque hasta el domingo la reseteaste.
+      fechaInicio: new Date().toISOString(),
     },
     unit: 1000, // valor de la unidad de apuesta, en la moneda que sea
     // lista permanente de amigos con los que juegas seguido (independiente
@@ -185,7 +191,7 @@ function newState() {
     // logic.js): [{ id, fecha, courseName, balanceYo, desglose }]
     roundsHistory: [],
     players: [
-      defaultPlayer(1, "Jugador 1"),
+      defaultPlayer(1, "Israel"),
       defaultPlayer(2, "Jugador 2"),
       defaultPlayer(3, "Jugador 3"),
       defaultPlayer(4, "Jugador 4"),
@@ -494,6 +500,12 @@ function migrateState(state) {
   }
   if (!state.round.hoyoInicial) {
     state.round.hoyoInicial = 1;
+  }
+  if (!state.round.fechaInicio) {
+    // rondas ya en curso de antes de este cambio no tienen forma de saber
+    // cuándo empezaron de verdad; usamos ahora como mejor esfuerzo, pero de
+    // aquí en adelante toda ronda nueva sí guarda su fecha real de inicio.
+    state.round.fechaInicio = new Date().toISOString();
   }
   if (!state.bets.foursome.segmentos || state.bets.foursome.segmentos.length === 0 || state.bets.foursome.segmentos.some((s) => !s.hoyos)) {
     // versiones viejas guardaban desde/hasta en vez de la lista de hoyos

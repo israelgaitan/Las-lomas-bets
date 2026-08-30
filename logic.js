@@ -1410,7 +1410,7 @@ function archivarRonda(state) {
   const resumen = calcResumenGeneral(state);
   const course = getActiveCourse(state);
   const yo = state.miPlayerId;
-  const fecha = new Date().toISOString();
+  const fecha = state.round.fechaInicio || new Date().toISOString();
 
   // 1. Individuales contra cada amigo (solo partidos donde juego yo)
   if (state.bets.individuales.enabled) {
@@ -1427,12 +1427,33 @@ function archivarRonda(state) {
     });
   }
 
-  // 2. Saldo total del día (todas las modalidades activas), guardado en el historial general
+  // 2. Saldo total del día (todas las modalidades activas), guardado en el
+  // historial general, más el desglose por modalidad (para exportar a Excel).
+  const indYo = resumen.individualesResults.reduce((sum, r) => {
+    if (r.a === yo) return sum + r.saldoA;
+    if (r.b === yo) return sum - r.saldoA;
+    return sum;
+  }, 0);
+  const fsYo = resumen.foursomeResults.reduce((sum, r) => {
+    if (r.base.includes(yo)) return sum + r.saldoTotal;
+    if (r.rival.includes(yo)) return sum - r.saldoTotal;
+    return sum;
+  }, 0);
   state.roundsHistory.push({
     id: "r" + Date.now(),
     fecha,
     courseName: course.name,
     balanceYo: resumen.balances[yo] || 0,
+    desglose: {
+      individuales: indYo,
+      foursome: fsYo,
+      skins: resumen.skinsResult.totalesPorJugador[yo] || 0,
+      loba: resumen.lobaResult.balances[yo] || 0,
+      stableford: resumen.stablefordResult.balances[yo] || 0,
+      banderas: resumen.banderasResult.balances[yo] || 0,
+      threePutt: resumen.threePuttResult.balances[yo] || 0,
+      chupes: resumen.chupesResult.balances[yo] || 0,
+    },
   });
 
   return true;

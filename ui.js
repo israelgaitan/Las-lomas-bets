@@ -39,8 +39,65 @@ function renderConfigScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const course = getActiveCourse(state);
 
+  /* ---- RESPALDO (exportar/importar todo lo guardado) ---- */
+  wrap.appendChild(el(`<h2 class="screen-title">Respaldo</h2>`));
+  const respaldoCard = el(`
+    <div class="card">
+      <p class="help-text" style="margin-top:0">Todo lo que metes a mano (jugadores, hándicaps, montos, historial de rondas, amigos) vive solo en este teléfono. Si borras datos de Safari, cambias de teléfono, o algo falla, se pierde para siempre — exporta un respaldo de vez en cuando para no arriesgarte.</p>
+      <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
+      <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
+      <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
+    </div>
+  `);
+  respaldoCard.querySelector('[data-role="exportar"]').addEventListener("click", () => {
+    const fecha = new Date().toISOString().slice(0, 10);
+    const filename = `las-lomas-bets-respaldo-${fecha}.json`;
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "application/json" })] })) {
+      navigator.share({ files: [new File([blob], filename, { type: "application/json" })], title: "Respaldo Las Lomas Bets" }).catch(() => {});
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  });
+  const importInput = respaldoCard.querySelector('[data-role="import-file"]');
+  respaldoCard.querySelector('[data-role="importar"]').addEventListener("click", () => importInput.click());
+  importInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(ev.target.result);
+      } catch (err) {
+        alert("No se pudo leer el archivo. Asegúrate de que sea un respaldo exportado desde esta misma app.");
+        return;
+      }
+      if (!parsed || !Array.isArray(parsed.players) || !parsed.bets) {
+        alert("Este archivo no parece un respaldo válido de Las Lomas Bets.");
+        return;
+      }
+      const ok = confirm("Esto va a REEMPLAZAR todo lo que tienes ahorita en la app (jugadores, hándicaps, montos, historial, amigos) con lo que traiga este respaldo. ¿Continuar?");
+      if (!ok) {
+        importInput.value = "";
+        return;
+      }
+      const migrado = migrateState(parsed);
+      onChange(migrado);
+    };
+    reader.readAsText(file);
+  });
+  wrap.appendChild(respaldoCard);
+
   /* ---- SELECTOR DE CANCHA ---- */
-  wrap.appendChild(el(`<h2 class="screen-title">Cancha de hoy</h2>`));
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Cancha de hoy</h2>`));
   const courseCard = el(`
     <div class="card">
       <div class="field">
@@ -171,6 +228,13 @@ function renderConfigScreen(state, onChange) {
   `);
   yoCard.querySelector('[data-role="yo-select"]').addEventListener("change", (e) => {
     state.miPlayerId = parseInt(e.target.value);
+    const yo = state.players.find((p) => p.id === state.miPlayerId);
+    // si el jugador todavía tiene el nombre por default ("Jugador N"), lo
+    // renombramos solo a "Israel"; si ya lo habías cambiado a otra cosa,
+    // no lo tocamos.
+    if (yo && /^Jugador \d$/.test(yo.name)) {
+      yo.name = "Israel";
+    }
     onChange(state);
   });
   wrap.appendChild(yoCard);
@@ -675,6 +739,94 @@ function renderHoleScreen(state, onChange) {
     progress.appendChild(dot);
   }
   wrap.appendChild(progress);
+
+  // Ventaja en este hoyo: quién recibe golpe, modalidad por modalidad
+  // (cada una puede llevar hándicaps distintos, así que la ventaja no es
+  // necesariamente la misma persona en todas).
+  const lineasVentaja = [];
+
+  if (state.bets.individuales.enabled) {
+    const vInd = calcGolpesVentaja(state.players, course.strokeIndex, "individuales");
+    const conVentaja = state.players.filter((p) => vInd[p.id][h] > 0);
+    if (conVentaja.length > 0) {
+      lineasVentaja.push(`Individuales: ${conVentaja.map((p) => `${p.name}${vInd[p.id][h] > 1 ? ` (+${vInd[p.id][h]})` : ""}`).join(", ")}`);
+    }
+    // partidos con ventaja manual (biblia) pueden diferir del hándicap
+    // automático de arriba — se avisan aparte para no confundir.
+    state.bets.individuales.matches.forEach((m) => {
+      if (!m.ventajaManual || !m.ventajaManual.jugador || !m.ventajaManual.golpes) return;
+      const golpesManual = repartirGolpesPorDificultad(m.ventajaManual.golpes, course.strokeIndex);
+      if (golpesManual[h] > 0) {
+        const nombre = playerName(state, m.ventajaManual.jugador);
+        const rivalId = m.ventajaManual.jugador === m.a ? m.b : m.a;
+        lineasVentaja.push(`Individuales (biblia, vs ${playerName(state, rivalId)}): ${nombre}${golpesManual[h] > 1 ? ` (+${golpesManual[h]})` : ""}`);
+      }
+    });
+  }
+
+  if (state.bets.foursome.enabled) {
+    const formatoF = state.bets.foursome.formato || "cruzado";
+    if (formatoF === "cruzado") {
+      const vFs = calcVentajasForusome(state.players, course.strokeIndex, state.bets.foursome.crosses);
+      state.bets.foursome.crosses.forEach((cross) => {
+        const receptor = [...cross.base, ...cross.rival].find((id) => (vFs[cross.id][id] || [])[h] > 0);
+        if (receptor) {
+          const golpes = vFs[cross.id][receptor][h];
+          const rivalTeam = cross.base.includes(receptor) ? cross.rival : cross.base;
+          lineasVentaja.push(`Foursome (vs ${rivalTeam.map((id) => playerName(state, id)).join("+")}): ${playerName(state, receptor)}${golpes > 1 ? ` (+${golpes})` : ""}`);
+        }
+      });
+    } else if (state.bets.foursome.participantes4.length === 4) {
+      const jugadores4 = state.players.filter((p) => state.bets.foursome.participantes4.includes(p.id));
+      const segmentosActivos = formatoF === "normal" ? state.bets.foursome.segmentos.slice(0, 1) : state.bets.foursome.segmentos;
+      const segmentoDeEsteHoyo = segmentosActivos.find((seg) => seg.hoyos.includes(h));
+      if (segmentoDeEsteHoyo) {
+        const vFs = calcVentajasForusome(jugadores4, course.strokeIndex, [segmentoDeEsteHoyo]);
+        const receptor = [...segmentoDeEsteHoyo.base, ...segmentoDeEsteHoyo.rival].find((id) => (vFs[segmentoDeEsteHoyo.id][id] || [])[h] > 0);
+        if (receptor) {
+          const golpes = vFs[segmentoDeEsteHoyo.id][receptor][h];
+          const rivalTeam = segmentoDeEsteHoyo.base.includes(receptor) ? segmentoDeEsteHoyo.rival : segmentoDeEsteHoyo.base;
+          lineasVentaja.push(`Foursome (vs ${rivalTeam.map((id) => playerName(state, id)).join("+")}): ${playerName(state, receptor)}${golpes > 1 ? ` (+${golpes})` : ""}`);
+        }
+      }
+    }
+  }
+
+  if (state.bets.skins.enabled) {
+    const jugadoresSkins = state.players.filter((p) => state.bets.skins.participantes.includes(p.id));
+    const vSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
+    const conVentaja = jugadoresSkins.filter((p) => vSkins[p.id][h] > 0);
+    if (conVentaja.length > 0) {
+      lineasVentaja.push(`Skins: ${conVentaja.map((p) => `${p.name}${vSkins[p.id][h] > 1 ? ` (+${vSkins[p.id][h]})` : ""}`).join(", ")}`);
+    }
+  }
+
+  if (state.bets.loba.enabled) {
+    const vLoba = calcGolpesVentaja(state.players, course.strokeIndex, "loba");
+    const conVentaja = state.players.filter((p) => vLoba[p.id][h] > 0);
+    if (conVentaja.length > 0) {
+      lineasVentaja.push(`Loba: ${conVentaja.map((p) => `${p.name}${vLoba[p.id][h] > 1 ? ` (+${vLoba[p.id][h]})` : ""}`).join(", ")}`);
+    }
+  }
+
+  if (state.bets.stableford.enabled) {
+    const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
+    const vSf = calcGolpesVentaja(jugadoresSf, course.strokeIndex, "stableford");
+    const conVentaja = jugadoresSf.filter((p) => vSf[p.id][h] > 0);
+    if (conVentaja.length > 0) {
+      lineasVentaja.push(`Stableford: ${conVentaja.map((p) => `${p.name}${vSf[p.id][h] > 1 ? ` (+${vSf[p.id][h]})` : ""}`).join(", ")}`);
+    }
+  }
+
+  if (lineasVentaja.length > 0) {
+    const ventajaCard = el(`
+      <div class="card" style="margin-bottom:14px">
+        <p class="card__subtitle" style="margin-bottom:6px">Ventaja en este hoyo</p>
+        ${lineasVentaja.map((l) => `<p style="margin:4px 0;font-size:14px">${l}</p>`).join("")}
+      </div>
+    `);
+    wrap.appendChild(ventajaCard);
+  }
 
   // Fila por jugador
   state.players.forEach((p) => {
@@ -1744,6 +1896,48 @@ function renderSummaryScreen(state, onChange) {
       });
     wrap.appendChild(histCard);
     wrap.appendChild(el(`<p class="help-text">Se guarda automáticamente cada vez que tocas "Resetear ronda" con golpes ya registrados.</p>`));
+
+    const exportCsvBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:8px">Exportar historial a Excel</button>`);
+    exportCsvBtn.addEventListener("click", () => {
+      const columnas = ["Fecha", "Cancha", "Individuales", "Foursome", "Skins", "Loba", "Stableford", "Banderas", "3-putt", "Chupes", "Total"];
+      const filasCsv = [columnas.join(",")];
+      state.roundsHistory.forEach((r) => {
+        const d = r.desglose || {};
+        const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const fila = [
+          fechaFmt,
+          `"${r.courseName.replace(/"/g, '""')}"`,
+          d.individuales || 0,
+          d.foursome || 0,
+          d.skins || 0,
+          d.loba || 0,
+          d.stableford || 0,
+          d.banderas || 0,
+          d.threePutt || 0,
+          d.chupes || 0,
+          r.balanceYo,
+        ];
+        filasCsv.push(fila.join(","));
+      });
+      // BOM al inicio para que Excel abra los acentos bien (ej. "Cañadas")
+      const csvContent = "\uFEFF" + filasCsv.join("\r\n");
+      const fecha = new Date().toISOString().slice(0, 10);
+      const filename = `las-lomas-bets-historial-${fecha}.csv`;
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "text/csv" })] })) {
+        navigator.share({ files: [new File([blob], filename, { type: "text/csv" })], title: "Historial Las Lomas Bets" }).catch(() => {});
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    });
+    wrap.appendChild(exportCsvBtn);
   }
 
   return wrap;
