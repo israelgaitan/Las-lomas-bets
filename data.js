@@ -133,12 +133,6 @@ function defaultFriend(id, name) {
     biblia: 0,
     individualesTotal: 0,
     individualesHistorial: [],
-    // igual que individualesTotal pero para Foursome (también es pareja
-    // vs pareja, así que sí se puede atribuir "contra" un amigo). Skins,
-    // Loba, Stableford y Banderas NO se guardan por amigo porque son bote
-    // de grupo, no 1v1 ni pareja vs pareja.
-    foursomeTotal: 0,
-    foursomeHistorial: [],
   };
 }
 
@@ -247,16 +241,13 @@ function newState() {
     // cruce (id de cruce "A"/"B"/"C" -> "base" | "rival" | null).
     // Solo aplica en hoyos par 3; reemplaza el conteo automático de oyes
     // individual para la modalidad foursome específicamente.
-    foursomeOyes: new Array(18).fill(null).map(() => ({})),
-    // igual que foursomeOyes pero para el modo independiente "Rotación de
-    // parejas cada 6 hoyos" (claves "S1"/"S2"/"S3" -> "base" | "rival" | null)
-    rotacionOyes: new Array(18).fill(null).map(() => ({})),
-    // oyes manual de individuales: por hoyo, quién ganó el oyes en CADA
-    // partido 1v1 (clave "menorId-mayorId" -> playerId del ganador | sin
-    // entrada = sin marcar). Solo aplica en hoyos par 3. El ganador puede
-    // variar según el rival: ej. 1 le gana el oyes a 2, pero 1 pierde el
-    // oyes contra 3 (3 quedó más cerca de la bandera que 1).
-    individualesOyes: new Array(18).fill(null).map(() => ({})),
+    // Oyes: UNA sola marca por hoyo (orden de cercanía a la bandera), no
+    // una por modalidad. { [playerId]: posición (1=más cerca, 2, 3...) }.
+    // Todas las modalidades (individuales, foursome, rotación) derivan
+    // solas quién ganó el oyes de SU partido/cruce comparando las
+    // posiciones de los jugadores involucrados — comparando quién quedó
+    // más cerca entre ellos, sin tener que marcarlo de nuevo por cada uno.
+    oyesOrden: new Array(18).fill(null).map(() => ({})),
     bets: {
       individuales: {
         enabled: true,
@@ -268,13 +259,17 @@ function newState() {
       },
       foursome: {
         enabled: true,
-        // si es false, el foursome se juega SOLO con bola alta y bola baja
-        // (y el oyes manual, si aplica); no se suman unidades extra por
-        // birdie/águila/hoyo en uno/sandy/metida de ningún jugador.
-        unidadesActivas: true,
-        // participantes: quiénes juegan foursome hoy. Con 5 -> foursome
-        // cruzado (3 cruces contra las 3 combinaciones de los otros 3).
-        // Con 4 -> foursome normal, un solo cruce 2 vs 2.
+        // formato: "cruzado" (5 jugadores, 3 cruces contra las 3
+        // combinaciones), "roundRobin" (4 jugadores, cambia de pareja
+        // cada 6 hoyos pasando por las 3 combinaciones posibles), o
+        // "normal" (4 jugadores, misma pareja fija los 18 hoyos). Solo
+        // UNO está activo a la vez; cambiar de formato no borra la
+        // configuración de los otros 2, por si regresas a usarlos.
+        formato: "cruzado",
+
+        // --- formato "cruzado" (5 jugadores) ---
+        // participantes: quiénes juegan foursome hoy. Con 5 -> cruzado
+        // real (3 cruces). Con 4 -> un solo cruce 2 vs 2.
         participantes: [1, 2, 3, 4, 5],
         // basePlayers: los 2 jugadores que son "la base" hoy (se rifan antes
         // de jugar). Los cruces se regeneran automáticamente contra los
@@ -287,20 +282,11 @@ function newState() {
           { id: "B", base: [1, 2], rival: [3, 5], montoIda: 0, montoVuelta: 0 },
           { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
         ],
-      },
-      // "Foursome" de 4 jugadores: modo INDEPENDIENTE de "Foursome cruzado"
-      // (que sigue usando 5). Necesita EXACTAMENTE 4 participantes.
-      // rotar=true: cambia de pareja cada 6 hoyos (en tu orden real de
-      // juego), pasando por las 3 combinaciones posibles — así cada quien
-      // juega 6 hoyos con cada uno de los otros 3.
-      // rotar=false: pareja fija los 18 hoyos completos (elegida a mano).
-      // La ventaja se calcula igual que en foursome cruzado (suma de
-      // hcp.foursome de la pareja vs la pareja rival).
-      rotacion: {
-        enabled: false,
-        unidadesActivas: true,
-        rotar: true,
-        participantes: [1, 2, 3, 4],
+
+        // --- formatos "roundRobin" y "normal" (4 jugadores, EXACTOS) ---
+        // roundRobin usa los 3 segmentos de 6 hoyos; normal usa solo el
+        // primero (segmentos[0]) con sus 18 hoyos completos.
+        participantes4: [1, 2, 3, 4],
         segmentos: [
           { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 0 },
           { id: "S2", hoyos: [6, 7, 8, 9, 10, 11], base: [1, 3], rival: [2, 4], monto: 0 },
@@ -462,10 +448,38 @@ function migrateState(state) {
     const primerCruce = state.bets.foursome.crosses[0];
     state.bets.foursome.basePlayers = primerCruce ? [...primerCruce.base] : [1, 2];
   }
-  if (state.bets.foursome.unidadesActivas === undefined) {
-    // default true para no cambiarle el juego a nadie que ya lo tenía configurado
-    state.bets.foursome.unidadesActivas = true;
+  // Foursome cruzado y "Foursome de 4 jugadores" (bets.rotacion) eran 2
+  // apuestas independientes que se podían activar a la vez; ahora son 3
+  // FORMATOS de una sola apuesta "Foursome" (cruzado / roundRobin / normal),
+  // uno a la vez, elegidos con bets.foursome.formato. Si el estado guardado
+  // traía cualquiera de las 2 versiones viejas, se consolida sin perder lo
+  // que ya tenían armado en cada una.
+  if (!state.bets.foursome.participantes4) {
+    // heredamos de bets.rotacion si existía (independiente, versión anterior)
+    const vieja = state.bets.rotacion;
+    state.bets.foursome.participantes4 = vieja && vieja.participantes && vieja.participantes.length === 4 ? [...vieja.participantes] : [1, 2, 3, 4];
+    if (vieja && vieja.segmentos && vieja.segmentos.length > 0 && vieja.segmentos.every((s) => s.hoyos)) {
+      state.bets.foursome.segmentos = vieja.segmentos;
+    }
+    if (!state.bets.foursome.formato) {
+      // si antes tenían rotacion activo (y foursome cruzado normal apagado
+      // o los 2 activos), usamos ese formato para no cambiarle el juego a
+      // quien ya lo tenía configurado así
+      if (vieja && vieja.enabled) {
+        state.bets.foursome.formato = vieja.rotar === false ? "normal" : "roundRobin";
+        state.bets.foursome.enabled = true;
+      } else {
+        state.bets.foursome.formato = "cruzado";
+      }
+    }
+    delete state.bets.rotacion;
   }
+  if (!state.bets.foursome.formato) {
+    state.bets.foursome.formato = "cruzado";
+  }
+  // ya no existe la opción de apagar las unidades por eventos en foursome
+  // (siempre cuentan); si algún estado guardado la trae, se ignora sin más.
+  delete state.bets.foursome.unidadesActivas;
   // ya no se usa un % recortado de hándicap para Loba (se quitó la opción);
   // si algún estado guardado todavía lo trae, simplemente se ignora en el
   // cálculo (calcGolpesVentaja usa 100% si no se le pasa porcentaje).
@@ -481,43 +495,13 @@ function migrateState(state) {
   if (!state.round.hoyoInicial) {
     state.round.hoyoInicial = 1;
   }
-  // "Rotación de parejas" era una opción DENTRO de foursome (rotarParejas);
-  // ahora es su propio modo independiente (bets.rotacion). Si el estado
-  // guardado todavía trae esa config vieja adentro de foursome, la
-  // movemos para no perder lo que ya tenían armado, y la quitamos de
-  // foursome (que vuelve a ser solo el cruzado de siempre).
-  if (state.bets.foursome.rotarParejas !== undefined || state.bets.foursome.segmentos) {
-    if (!state.bets.rotacion) {
-      state.bets.rotacion = {
-        enabled: !!state.bets.foursome.rotarParejas,
-        unidadesActivas: state.bets.foursome.unidadesActivas,
-        rotar: true,
-        participantes: state.bets.foursome.participantes.length === 4 ? [...state.bets.foursome.participantes] : [1, 2, 3, 4],
-        segmentos: state.bets.foursome.segmentos || [],
-      };
-    }
-    delete state.bets.foursome.rotarParejas;
-    delete state.bets.foursome.segmentos;
-  }
-  if (!state.bets.rotacion) {
-    state.bets.rotacion = {
-      enabled: false,
-      unidadesActivas: true,
-      rotar: true,
-      participantes: [1, 2, 3, 4],
-      segmentos: [],
-    };
-  }
-  if (state.bets.rotacion.rotar === undefined) {
-    state.bets.rotacion.rotar = true;
-  }
-  if (!state.bets.rotacion.segmentos || state.bets.rotacion.segmentos.length === 0 || state.bets.rotacion.segmentos.some((s) => !s.hoyos)) {
+  if (!state.bets.foursome.segmentos || state.bets.foursome.segmentos.length === 0 || state.bets.foursome.segmentos.some((s) => !s.hoyos)) {
     // versiones viejas guardaban desde/hasta en vez de la lista de hoyos
-    state.bets.rotacion.segmentos = generarSegmentosRotacion(
-      state.bets.rotacion.participantes.slice(0, 4),
-      state.bets.rotacion.segmentos,
+    state.bets.foursome.segmentos = generarSegmentosRotacion(
+      state.bets.foursome.participantes4.slice(0, 4),
+      state.bets.foursome.segmentos,
       state.round.hoyoInicial,
-      state.bets.rotacion.rotar
+      state.bets.foursome.formato !== "normal"
     );
   }
   if (!state.banderas) {
@@ -530,19 +514,20 @@ function migrateState(state) {
       if (cfg.chupes === undefined) cfg.chupes = 0;
     });
   });
-  if (!state.foursomeOyes) {
-    state.foursomeOyes = new Array(18).fill(null).map(() => ({}));
+  // Los oyes se marcaban antes UNO POR UNO por cada modalidad (foursomeOyes,
+  // rotacionOyes, individualesOyes); ahora es un solo orden de cercanía por
+  // hoyo del que todas las modalidades derivan solas. Las marcas viejas no
+  // se pueden traducir a un orden (solo decían "ganó A" sin decir en qué
+  // posición quedaron los demás), así que se descartan sin más.
+  delete state.foursomeOyes;
+  delete state.rotacionOyes;
+  delete state.individualesOyes;
+  if (!state.oyesOrden) {
+    state.oyesOrden = new Array(18).fill(null).map(() => ({}));
   }
-  if (!state.rotacionOyes) {
-    state.rotacionOyes = new Array(18).fill(null).map(() => ({}));
-  }
-  if (!state.individualesOyes) {
-    state.individualesOyes = new Array(18).fill(null).map(() => ({}));
-  }
-  if (!state.oyes) {
-    state.oyes = {};
-    state.players.forEach((p) => (state.oyes[p.id] = emptySandyFlags()));
-  }
+  // el "Oyes" ya no se guarda como bandera booleana por jugador; se
+  // deriva de oyesOrden (posición 1 = ganó el oyes del hoyo)
+  delete state.oyes;
   if (!state.metidas) {
     state.metidas = {};
     state.players.forEach((p) => (state.metidas[p.id] = emptySandyFlags()));
@@ -554,8 +539,9 @@ function migrateState(state) {
   state.friends.forEach((f) => {
     if (f.individualesTotal === undefined) f.individualesTotal = 0;
     if (!f.individualesHistorial) f.individualesHistorial = [];
-    if (f.foursomeTotal === undefined) f.foursomeTotal = 0;
-    if (!f.foursomeHistorial) f.foursomeHistorial = [];
+    // ya no se guarda Foursome por amigo (solo se pidió llevar Individuales)
+    delete f.foursomeTotal;
+    delete f.foursomeHistorial;
   });
   if (state.miPlayerId === undefined) {
     state.miPlayerId = state.players[0] ? state.players[0].id : 1;
