@@ -98,6 +98,11 @@
       fresh.friends = friendsToKeep;
       fresh.roundsHistory = historyToKeep;
       fresh.miPlayerId = miPlayerIdToKeep;
+      // el jugador que ya tenías marcado como "tú" se queda llamando
+      // Israel en la ronda nueva, sin importar en qué posición esté —
+      // así no hay que retiparlo cada vez que se resetea.
+      const yoFresh = fresh.players.find((p) => p.id === miPlayerIdToKeep);
+      if (yoFresh) yoFresh.name = "Israel";
       // si la cancha que estaba activa ya no existe (no debería pasar, pero
       // por seguridad), usamos la primera disponible
       fresh.round.courseId = coursesToKeep.some((c) => c.id === state.round.courseId)
