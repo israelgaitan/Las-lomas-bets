@@ -600,6 +600,12 @@ function migrateState(state) {
     if (m.ventajaManual === undefined) {
       m.ventajaManual = null;
     }
+    if (m.modo === undefined) {
+      m.modo = "normal";
+    }
+    if (m.montoMatch === undefined) {
+      m.montoMatch = 0;
+    }
   });
   // migrar cruces de foursome viejos (montoAlta/montoBaja) al nuevo esquema
   // por vuelta (montoIda/montoVuelta, mismo valor para alta y baja)

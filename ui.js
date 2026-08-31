@@ -1223,13 +1223,31 @@ function renderBetsScreen(state, onChange) {
     const nombreA = playerName(state, r.a);
     const nombreB = playerName(state, r.b);
     const vm = match.ventajaManual;
+    const esMatchPlay = match.modo === "matchPlay";
+    const marcadorHoyos = esMatchPlay && r.holesCounted > 0
+      ? `<p class="help-text" style="margin:2px 0 8px">Hoyos ganados: ${nombreA} ${r.hoyosGanadosA} – ${r.hoyosGanadosB} ${nombreB}</p>`
+      : "";
     const matchBlock = el(`
       <div style="margin-bottom:14px;border-bottom:1px solid var(--linea);padding-bottom:12px">
         <div class="match-row" style="border-bottom:none;padding-bottom:6px">
           <span class="match-row__names">${nombreA}<span class="match-row__vs">vs</span>${nombreB}</span>
           <span class="match-row__amount ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
         </div>
+        ${marcadorHoyos}
+        <div class="field" style="margin-bottom:6px">
+          <label>Modo de juego</label>
+          <select data-role="match-modo" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+            <option value="normal" ${!esMatchPlay ? "selected" : ""}>Normal (hoyos + birdies/águilas/sandies/oyes)</option>
+            <option value="matchPlay" ${esMatchPlay ? "selected" : ""}>Match Play (solo hoyos ganados)</option>
+          </select>
+        </div>
         <div class="field-row">
+          ${esMatchPlay ? `
+          <div class="field" style="margin-bottom:6px">
+            <label>$ del partido (al que gane más hoyos)</label>
+            <input type="number" value="${match.montoMatch || 0}" data-role="match-monto" />
+          </div>
+          ` : `
           <div class="field" style="margin-bottom:6px">
             <label>$/hoyo ida (1-9)</label>
             <input type="number" value="${match.montoIda}" data-role="match-ida" />
@@ -1238,6 +1256,7 @@ function renderBetsScreen(state, onChange) {
             <label>$/hoyo vuelta (10-18)</label>
             <input type="number" value="${match.montoVuelta}" data-role="match-vuelta" />
           </div>
+          `}
         </div>
         <div class="field" style="margin-bottom:6px">
           <label>Ventaja de este partido (biblia) — reemplaza el hándicap automático</label>
@@ -1256,16 +1275,34 @@ function renderBetsScreen(state, onChange) {
         <button class="btn btn-ghost btn-small" data-role="match-delete" style="width:100%">Eliminar partido</button>
       </div>
     `);
-    matchBlock.querySelector('[data-role="match-ida"]').addEventListener("input", (e) => {
-      match.montoIda = parseFloat(e.target.value) || 0;
-      onChange(state, { skipRender: true });
+    matchBlock.querySelector('[data-role="match-modo"]').addEventListener("change", (e) => {
+      match.modo = e.target.value;
+      onChange(state);
     });
-    matchBlock.querySelector('[data-role="match-ida"]').addEventListener("change", () => onChange(state));
-    matchBlock.querySelector('[data-role="match-vuelta"]').addEventListener("input", (e) => {
-      match.montoVuelta = parseFloat(e.target.value) || 0;
-      onChange(state, { skipRender: true });
-    });
-    matchBlock.querySelector('[data-role="match-vuelta"]').addEventListener("change", () => onChange(state));
+    const matchIdaInput = matchBlock.querySelector('[data-role="match-ida"]');
+    if (matchIdaInput) {
+      matchIdaInput.addEventListener("input", (e) => {
+        match.montoIda = parseFloat(e.target.value) || 0;
+        onChange(state, { skipRender: true });
+      });
+      matchIdaInput.addEventListener("change", () => onChange(state));
+    }
+    const matchVueltaInput = matchBlock.querySelector('[data-role="match-vuelta"]');
+    if (matchVueltaInput) {
+      matchVueltaInput.addEventListener("input", (e) => {
+        match.montoVuelta = parseFloat(e.target.value) || 0;
+        onChange(state, { skipRender: true });
+      });
+      matchVueltaInput.addEventListener("change", () => onChange(state));
+    }
+    const matchMontoInput = matchBlock.querySelector('[data-role="match-monto"]');
+    if (matchMontoInput) {
+      matchMontoInput.addEventListener("input", (e) => {
+        match.montoMatch = parseFloat(e.target.value) || 0;
+        onChange(state, { skipRender: true });
+      });
+      matchMontoInput.addEventListener("change", () => onChange(state));
+    }
     matchBlock.querySelector('[data-role="vm-jugador"]').addEventListener("change", (e) => {
       if (e.target.value === "") {
         match.ventajaManual = null;
@@ -1316,7 +1353,7 @@ function renderBetsScreen(state, onChange) {
       alert("Elige 2 jugadores distintos para crear el partido.");
       return;
     }
-    state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta, ventajaManual: null });
+    state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta, ventajaManual: null, modo: "normal", montoMatch: 0 });
     onChange(state);
   });
   wrap.appendChild(indCard);

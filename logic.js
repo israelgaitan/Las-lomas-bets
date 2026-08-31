@@ -167,7 +167,7 @@ function generarTodosVsTodos(participantIds) {
   const matches = [];
   for (let i = 0; i < participantIds.length; i++) {
     for (let j = i + 1; j < participantIds.length; j++) {
-      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0, ventajaManual: null });
+      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0, ventajaManual: null, modo: "normal" });
     }
   }
   return matches;
@@ -422,12 +422,15 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
 }
 
 /**
- * @param {Object} match - {a, b, montoIda, montoVuelta, ventajaManual}
+ * @param {Object} match - {a, b, montoIda, montoVuelta, ventajaManual, modo}
  *   ventajaManual = {jugador: playerId, golpes: number} | null. Si está
  *   puesto, REEMPLAZA el hándicap automático SOLO para este partido
  *   específico (útil para "biblia": acuerdos históricos con un rival en
  *   particular que no siguen el hándicap calculado). Si es null, se usa
  *   el hándicap normal (relativo al grupo, calculado por calcGolpesVentaja).
+ *   modo = "normal" (por defecto, con eventos y oyes) | "matchPlay" (solo
+ *   cuenta hoyos ganados, sin birdies/águilas/sandies/oyes/metidas — el
+ *   que gana más hoyos gana el partido).
  * @param {Array<number>} par - par de cada hoyo de la cancha activa
  * @param {Array<number>} strokeIndex - hándicap de cada hoyo de la cancha,
  *   necesario para repartir la ventaja manual en los hoyos correctos.
@@ -438,16 +441,24 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
  *   la de match.b (quien haya quedado más cerca de los dos).
  * @param {Object} metidas - { [playerId]: [18 booleanos] } metida de
  *   afuera (chip-in) marcada manualmente, aplica en cualquier hoyo.
- * Cada jugador suma "unidades" en el hoyo: ganar el hoyo (golpe neto más
- * bajo) = 1 unidad, más 1 unidad por cada evento especial que logre
- * (birdie, águila, hoyo en uno, sandy, metida de afuera), más 1 unidad si
- * ganó el oyes de ESTE partido. Se cobra la DIFERENCIA de unidades entre
- * los 2, multiplicada por el monto de esa vuelta.
+ * Modo "normal": cada jugador suma "unidades" en el hoyo: ganar el hoyo
+ * (golpe neto más bajo) = 1 unidad, más 1 unidad por cada evento especial
+ * que logre (birdie, águila, hoyo en uno, sandy, metida de afuera), más 1
+ * unidad si ganó el oyes de ESTE partido. Se cobra la DIFERENCIA de
+ * unidades entre los 2, multiplicada por el monto de esa vuelta.
+ * Modo "matchPlay": solo cuenta quién gana cada hoyo (golpe neto más
+ * bajo); no suman eventos especiales ni oyes. Gana el partido quien se
+ * lleve más hoyos, y se cobra un monto FIJO por todo el partido
+ * (match.montoMatch) — no por hoyo. Si empatan en hoyos ganados, no se
+ * cobra nada (push).
  */
 function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyesOrden, metidas) {
+  const soloHoyos = match.modo === "matchPlay";
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
   let holesCounted = 0;
+  let hoyosGanadosA = 0;
+  let hoyosGanadosB = 0;
 
   // Ventaja de ESTE partido en particular: si hay ventajaManual, se
   // reemplaza el hándicap automático solo aquí (no afecta los demás
@@ -477,8 +488,9 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
     const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
 
     // unidades por eventos especiales (independiente de quién gane el hoyo)
-    const eventosA = contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], false, metidas[match.a][h]);
-    const eventosB = contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], false, metidas[match.b][h]);
+    // — en modo matchPlay no cuentan, solo importa quién gana el hoyo.
+    const eventosA = soloHoyos ? 0 : contarEventosJugador(brutos[match.a][h], par[h], sandies[match.a][h], false, metidas[match.a][h]);
+    const eventosB = soloHoyos ? 0 : contarEventosJugador(brutos[match.b][h], par[h], sandies[match.b][h], false, metidas[match.b][h]);
 
     // unidad por ganar el hoyo (golpe neto más bajo)
     let unidadesA = eventosA;
@@ -487,9 +499,11 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
     if (na < nb) {
       ganadorHoyo = match.a;
       unidadesA += 1;
+      hoyosGanadosA++;
     } else if (nb < na) {
       ganadorHoyo = match.b;
       unidadesB += 1;
+      hoyosGanadosB++;
     }
     // empate en golpe neto: nadie suma la unidad de "ganar el hoyo",
     // pero los eventos especiales de cada uno sí cuentan igual
@@ -497,8 +511,9 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
     // oyes de este partido (solo hoyos par 3): se deriva del orden de
     // cercanía marcado UNA vez por hoyo, comparando solo a match.a vs
     // match.b (sin importar dónde quedaron los demás jugadores del grupo).
+    // No aplica en modo matchPlay (solo cuentan hoyos ganados).
     let oyesGanador = null;
-    if (par[h] === 3) {
+    if (par[h] === 3 && !soloHoyos) {
       const resultado = ganadorOyesEntre(oyesOrden[h], [match.a], [match.b]);
       if (resultado === "a") {
         oyesGanador = match.a;
@@ -511,7 +526,11 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
 
     holesCounted++;
     const diffUnidades = unidadesA - unidadesB;
-    saldoA += diffUnidades * montoHoyo;
+    // en modo matchPlay el dinero NO se acumula hoyo por hoyo: se decide
+    // al final con un monto fijo (ver abajo, después del loop).
+    if (!soloHoyos) {
+      saldoA += diffUnidades * montoHoyo;
+    }
 
     holeResults.push({
       hole: h + 1,
@@ -527,7 +546,17 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
     });
   }
 
-  const totalUnidades = holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
+  // Modo matchPlay: se paga un monto FIJO por todo el partido a quien se
+  // haya llevado más hoyos (no importa por cuánto margen). Empate en
+  // hoyos ganados = no se cobra nada.
+  if (soloHoyos) {
+    const montoMatch = match.montoMatch || 0;
+    if (hoyosGanadosA > hoyosGanadosB) saldoA = montoMatch;
+    else if (hoyosGanadosB > hoyosGanadosA) saldoA = -montoMatch;
+    else saldoA = 0;
+  }
+
+  const totalUnidades = soloHoyos ? hoyosGanadosA - hoyosGanadosB : holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
 
   return {
     ...match,
@@ -535,6 +564,8 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
     holesCounted,
     saldoA, // positivo = "a" va ganando dinero, negativo = "b" va ganando
     totalUnidades, // positivo = "a" lleva más unidades, negativo = "b" lleva más
+    hoyosGanadosA, // solo relevante para mostrar el marcador en modo matchPlay
+    hoyosGanadosB,
   };
 }
 
