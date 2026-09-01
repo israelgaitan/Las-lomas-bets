@@ -1232,7 +1232,7 @@ function renderBetsScreen(state, onChange) {
       alert("Selecciona al menos 2 jugadores para generar enfrentamientos.");
       return;
     }
-    const ok = confirm(`Esto reemplaza los partidos actuales con todos los enfrentamientos entre ${participantes.length} jugadores (${(participantes.length * (participantes.length - 1)) / 2} partidos, en $0 c/u). ¿Continuar?`);
+    const ok = confirm(`Esto reemplaza los partidos actuales con todos los enfrentamientos entre ${participantes.length} jugadores (${(participantes.length * (participantes.length - 1)) / 2} partidos, en $100/hoyo ida y vuelta c/u). ¿Continuar?`);
     if (!ok) return;
     state.bets.individuales.matches = generarTodosVsTodos(participantes);
     onChange(state);
@@ -1365,8 +1365,8 @@ function renderBetsScreen(state, onChange) {
         </select>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <input data-role="monto-ida" type="number" placeholder="$/hoyo ida" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
-        <input data-role="monto-vuelta" type="number" placeholder="$/hoyo vuelta" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
+        <input data-role="monto-ida" type="number" value="100" placeholder="$/hoyo ida" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
+        <input data-role="monto-vuelta" type="number" value="100" placeholder="$/hoyo vuelta" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)" />
       </div>
       <button class="btn btn-ghost btn-small" data-role="add" style="margin-top:10px;width:100%">+ Agregar partido</button>
     </div>

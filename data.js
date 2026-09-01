@@ -284,9 +284,9 @@ function newState() {
         // montoIda: $ por hoyo (igual para bola alta y baja) en hoyos 1-9
         // montoVuelta: $ por hoyo (igual para bola alta y baja) en hoyos 10-18
         crosses: [
-          { id: "A", base: [1, 2], rival: [3, 4], montoIda: 0, montoVuelta: 0 },
-          { id: "B", base: [1, 2], rival: [3, 5], montoIda: 0, montoVuelta: 0 },
-          { id: "C", base: [1, 2], rival: [4, 5], montoIda: 0, montoVuelta: 0 },
+          { id: "A", base: [1, 2], rival: [3, 4], montoIda: 50, montoVuelta: 100 },
+          { id: "B", base: [1, 2], rival: [3, 5], montoIda: 50, montoVuelta: 100 },
+          { id: "C", base: [1, 2], rival: [4, 5], montoIda: 50, montoVuelta: 100 },
         ],
 
         // --- formatos "roundRobin" y "normal" (4 jugadores, EXACTOS) ---
@@ -294,14 +294,14 @@ function newState() {
         // primero (segmentos[0]) con sus 18 hoyos completos.
         participantes4: [1, 2, 3, 4],
         segmentos: [
-          { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 0 },
-          { id: "S2", hoyos: [6, 7, 8, 9, 10, 11], base: [1, 3], rival: [2, 4], monto: 0 },
-          { id: "S3", hoyos: [12, 13, 14, 15, 16, 17], base: [1, 4], rival: [2, 3], monto: 0 },
+          { id: "S1", hoyos: [0, 1, 2, 3, 4, 5], base: [1, 2], rival: [3, 4], monto: 75 },
+          { id: "S2", hoyos: [6, 7, 8, 9, 10, 11], base: [1, 3], rival: [2, 4], monto: 75 },
+          { id: "S3", hoyos: [12, 13, 14, 15, 16, 17], base: [1, 4], rival: [2, 3], monto: 75 },
         ],
       },
       skins: {
         enabled: true,
-        montoPorHoyo: 0,
+        montoPorHoyo: 50,
         // quiénes juegan skins hoy (por defecto los 5). Permite jugar
         // skins solo entre algunos, sin tener que sacar a nadie de la ronda.
         participantes: [1, 2, 3, 4, 5],
@@ -317,9 +317,9 @@ function newState() {
       stableford: {
         enabled: true,
         // 3 premios separados: ida (1-9), vuelta (10-18), total (18 hoyos)
-        montoIda: 0,
-        montoVuelta: 0,
-        montoTotal: 0,
+        montoIda: 100,
+        montoVuelta: 100,
+        montoTotal: 100,
         // quiénes juegan stableford hoy (por defecto los 5)
         participantes: [1, 2, 3, 4, 5],
       },

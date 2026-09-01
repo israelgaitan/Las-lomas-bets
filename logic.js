@@ -167,7 +167,7 @@ function generarTodosVsTodos(participantIds) {
   const matches = [];
   for (let i = 0; i < participantIds.length; i++) {
     for (let j = i + 1; j < participantIds.length; j++) {
-      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 0, montoVuelta: 0, ventajaManual: null, modo: "normal" });
+      matches.push({ a: participantIds[i], b: participantIds[j], montoIda: 100, montoVuelta: 100, ventajaManual: null, modo: "normal" });
     }
   }
   return matches;
