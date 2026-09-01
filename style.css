@@ -247,7 +247,8 @@ input:focus-visible {
 .player-row__top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .player-row__name {
@@ -345,6 +346,18 @@ input:focus-visible {
   border-radius: 6px;
   background: rgba(212, 165, 64, 0.18);
   color: var(--dorado);
+}
+
+.ventaja-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(196, 90, 74, 0.22);
+  color: #e8a897;
+  border: 1px solid rgba(196, 90, 74, 0.4);
+  white-space: nowrap;
 }
 
 /* ---------------- TABS (bottom nav) ---------------- */

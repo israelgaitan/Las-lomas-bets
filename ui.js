@@ -670,6 +670,39 @@ function renderConfigScreen(state, onChange) {
    PANTALLA: TARJETA DE HOYO
    ============================================================ */
 
+/**
+ * true si los 5 jugadores ya tienen un golpe capturado en este hoyo
+ * (índice 0-based h). Se usa para detectar el momento EXACTO en que un
+ * hoyo pasa de incompleto a completo, y así avanzar solo, sin repetir el
+ * avance cada vez que se corrige un score ya completo.
+ */
+function todosLosJugadoresTienenScore(state, h) {
+  return state.players.every((pl) => state.scores[pl.id][h] !== null);
+}
+
+/**
+ * Avanza automáticamente al siguiente hoyo cuando se acaba de completar
+ * el score de los 5 jugadores (transición incompleto -> completo). Da un
+ * pequeño respiro (550ms) para que se alcance a ver el último número/badge
+ * capturado antes de saltar de hoyo. Si el usuario ya se movió a mano a
+ * otro hoyo mientras tanto, no lo interrumpe.
+ */
+function avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange) {
+  if (previamenteCompleto) return; // ya estaba completo antes de este cambio
+  if (!todosLosJugadoresTienenScore(state, h)) return; // todavía falta alguien
+  setTimeout(() => {
+    if (state.round.currentHole - 1 !== h) return; // el usuario ya se movió a mano
+    if (h < 17) {
+      state.round.currentHole = h + 2;
+    } else if (arrancaEn10) {
+      state.round.currentHole = 1;
+    } else {
+      return; // hoyo 18 sin arranque en 10: ya no hay a dónde avanzar
+    }
+    onChange(state);
+  }, 550);
+}
+
 function renderHoleScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const h = state.round.currentHole - 1; // índice 0-based
@@ -735,24 +768,28 @@ function renderHoleScreen(state, onChange) {
 
   // Ventaja en este hoyo: quién recibe golpe, modalidad por modalidad
   // (cada una puede llevar hándicaps distintos, así que la ventaja no es
-  // necesariamente la misma persona en todas).
-  const lineasVentaja = [];
+  // necesariamente la misma persona en todas). Se guarda por jugador para
+  // pintarla como badge directo en su fila, en vez de una tarjeta aparte.
+  const ventajasPorJugador = {};
+  state.players.forEach((p) => (ventajasPorJugador[p.id] = []));
+  function agregarVentaja(playerId, texto) {
+    if (!ventajasPorJugador[playerId]) ventajasPorJugador[playerId] = [];
+    ventajasPorJugador[playerId].push(texto);
+  }
 
   if (state.bets.individuales.enabled) {
     const vInd = calcGolpesVentaja(state.players, course.strokeIndex, "individuales");
-    const conVentaja = state.players.filter((p) => vInd[p.id][h] > 0);
-    if (conVentaja.length > 0) {
-      lineasVentaja.push(`Individuales: ${conVentaja.map((p) => `${p.name}${vInd[p.id][h] > 1 ? ` (+${vInd[p.id][h]})` : ""}`).join(", ")}`);
-    }
+    state.players.forEach((p) => {
+      if (vInd[p.id][h] > 0) agregarVentaja(p.id, `Ind${vInd[p.id][h] > 1 ? ` +${vInd[p.id][h]}` : ""}`);
+    });
     // partidos con ventaja manual (biblia) pueden diferir del hándicap
-    // automático de arriba — se avisan aparte para no confundir.
+    // automático de arriba — se marcan aparte para no confundir.
     state.bets.individuales.matches.forEach((m) => {
       if (!m.ventajaManual || !m.ventajaManual.jugador || !m.ventajaManual.golpes) return;
       const golpesManual = repartirGolpesPorDificultad(m.ventajaManual.golpes, course.strokeIndex);
       if (golpesManual[h] > 0) {
-        const nombre = playerName(state, m.ventajaManual.jugador);
         const rivalId = m.ventajaManual.jugador === m.a ? m.b : m.a;
-        lineasVentaja.push(`Individuales (biblia, vs ${playerName(state, rivalId)}): ${nombre}${golpesManual[h] > 1 ? ` (+${golpesManual[h]})` : ""}`);
+        agregarVentaja(m.ventajaManual.jugador, `Ind vs ${playerName(state, rivalId)}${golpesManual[h] > 1 ? ` +${golpesManual[h]}` : ""}`);
       }
     });
   }
@@ -765,8 +802,7 @@ function renderHoleScreen(state, onChange) {
         const receptor = [...cross.base, ...cross.rival].find((id) => (vFs[cross.id][id] || [])[h] > 0);
         if (receptor) {
           const golpes = vFs[cross.id][receptor][h];
-          const rivalTeam = cross.base.includes(receptor) ? cross.rival : cross.base;
-          lineasVentaja.push(`Foursome (vs ${rivalTeam.map((id) => playerName(state, id)).join("+")}): ${playerName(state, receptor)}${golpes > 1 ? ` (+${golpes})` : ""}`);
+          agregarVentaja(receptor, `Fs${golpes > 1 ? ` +${golpes}` : ""}`);
         }
       });
     } else if (state.bets.foursome.participantes4.length === 4) {
@@ -778,8 +814,7 @@ function renderHoleScreen(state, onChange) {
         const receptor = [...segmentoDeEsteHoyo.base, ...segmentoDeEsteHoyo.rival].find((id) => (vFs[segmentoDeEsteHoyo.id][id] || [])[h] > 0);
         if (receptor) {
           const golpes = vFs[segmentoDeEsteHoyo.id][receptor][h];
-          const rivalTeam = segmentoDeEsteHoyo.base.includes(receptor) ? segmentoDeEsteHoyo.rival : segmentoDeEsteHoyo.base;
-          lineasVentaja.push(`Foursome (vs ${rivalTeam.map((id) => playerName(state, id)).join("+")}): ${playerName(state, receptor)}${golpes > 1 ? ` (+${golpes})` : ""}`);
+          agregarVentaja(receptor, `Fs${golpes > 1 ? ` +${golpes}` : ""}`);
         }
       }
     }
@@ -788,50 +823,44 @@ function renderHoleScreen(state, onChange) {
   if (state.bets.skins.enabled) {
     const jugadoresSkins = state.players.filter((p) => state.bets.skins.participantes.includes(p.id));
     const vSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
-    const conVentaja = jugadoresSkins.filter((p) => vSkins[p.id][h] > 0);
-    if (conVentaja.length > 0) {
-      lineasVentaja.push(`Skins: ${conVentaja.map((p) => `${p.name}${vSkins[p.id][h] > 1 ? ` (+${vSkins[p.id][h]})` : ""}`).join(", ")}`);
-    }
+    jugadoresSkins.forEach((p) => {
+      if (vSkins[p.id][h] > 0) agregarVentaja(p.id, `Sk${vSkins[p.id][h] > 1 ? ` +${vSkins[p.id][h]}` : ""}`);
+    });
   }
 
   if (state.bets.loba.enabled) {
     const vLoba = calcGolpesVentaja(state.players, course.strokeIndex, "loba");
-    const conVentaja = state.players.filter((p) => vLoba[p.id][h] > 0);
-    if (conVentaja.length > 0) {
-      lineasVentaja.push(`Loba: ${conVentaja.map((p) => `${p.name}${vLoba[p.id][h] > 1 ? ` (+${vLoba[p.id][h]})` : ""}`).join(", ")}`);
-    }
+    state.players.forEach((p) => {
+      if (vLoba[p.id][h] > 0) agregarVentaja(p.id, `Loba${vLoba[p.id][h] > 1 ? ` +${vLoba[p.id][h]}` : ""}`);
+    });
   }
 
   if (state.bets.stableford.enabled) {
     const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
     const vSf = calcGolpesVentaja(jugadoresSf, course.strokeIndex, "stableford");
-    const conVentaja = jugadoresSf.filter((p) => vSf[p.id][h] > 0);
-    if (conVentaja.length > 0) {
-      lineasVentaja.push(`Stableford: ${conVentaja.map((p) => `${p.name}${vSf[p.id][h] > 1 ? ` (+${vSf[p.id][h]})` : ""}`).join(", ")}`);
-    }
+    jugadoresSf.forEach((p) => {
+      if (vSf[p.id][h] > 0) agregarVentaja(p.id, `SF${vSf[p.id][h] > 1 ? ` +${vSf[p.id][h]}` : ""}`);
+    });
   }
 
-  if (lineasVentaja.length > 0) {
-    const ventajaCard = el(`
-      <div class="card" style="margin-bottom:14px">
-        <p class="card__subtitle" style="margin-bottom:6px">Ventaja en este hoyo</p>
-        ${lineasVentaja.map((l) => `<p style="margin:4px 0;font-size:14px">${l}</p>`).join("")}
-      </div>
-    `);
-    wrap.appendChild(ventajaCard);
-  }
+  // (la ventaja ya no se muestra en una tarjeta aparte: se pinta como
+  // badge directo junto al nombre de cada jugador en su fila, más abajo)
 
   // Fila por jugador
   state.players.forEach((p) => {
     const bruto = state.scores[p.id][h];
-    const isSandy = state.sandies[p.id][h];
     const isMetida = state.metidas[p.id][h];
+    // ganó el oyes de este hoyo (quedó en posición 1 = más cerca de la
+    // bandera) según el orden de cercanía compartido. Se usa solo para
+    // mostrar el badge de "Oyes" en su fila.
+    const isOyes = (state.oyesOrden[h] || {})[p.id] === 1;
     const banderasCfg = state.banderas[p.id][h];
 
     const row = el(`
       <div class="player-row">
         <div class="player-row__top">
           <span class="player-row__name">${p.name}</span>
+          ${(ventajasPorJugador[p.id] || []).map((v) => `<span class="ventaja-badge">${v}</span>`).join("")}
         </div>
         <div class="player-row__controls">
           <div class="stepper">
@@ -840,7 +869,6 @@ function renderHoleScreen(state, onChange) {
             <button class="stepper__btn" data-act="plus">+</button>
           </div>
           <div class="event-toggles">
-            <button class="event-toggle ${isSandy ? "active" : ""}" data-act="sandy">Sandy</button>
             <button class="event-toggle ${isMetida ? "active" : ""}" data-act="metida">Unidad</button>
           </div>
         </div>
@@ -877,20 +905,20 @@ function renderHoleScreen(state, onChange) {
     }
 
     row.querySelector('[data-act="minus"]').addEventListener("click", () => {
+      const previamenteCompleto = todosLosJugadoresTienenScore(state, h);
       const cur = currentBruto();
       const next = cur === null ? Math.max(1, par - 1) : Math.max(1, cur - 1);
       state.scores[p.id][h] = next;
       onChange(state);
+      avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange);
     });
     row.querySelector('[data-act="plus"]').addEventListener("click", () => {
+      const previamenteCompleto = todosLosJugadoresTienenScore(state, h);
       const cur = currentBruto();
       const next = cur === null ? par : cur + 1;
       state.scores[p.id][h] = next;
       onChange(state);
-    });
-    row.querySelector('[data-act="sandy"]').addEventListener("click", () => {
-      state.sandies[p.id][h] = !state.sandies[p.id][h];
-      onChange(state);
+      avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange);
     });
     row.querySelector('[data-act="metida"]').addEventListener("click", () => {
       state.metidas[p.id][h] = !state.metidas[p.id][h];
@@ -934,7 +962,7 @@ function renderHoleScreen(state, onChange) {
 
     // Badges de eventos detectados automáticamente
     if (bruto !== null) {
-      const eventos = detectarEventos(bruto, par, isSandy, isOyes, isMetida);
+      const eventos = detectarEventos(bruto, par, false, isOyes, isMetida);
       if (eventos.length > 0) {
         const badges = el(`<div class="event-badges"></div>`);
         eventos.forEach((ev) => {
