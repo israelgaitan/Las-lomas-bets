@@ -14,6 +14,7 @@
   --terracota-oscuro: #A04E22;
   --rojo-apuesta: #A8332A;
   --dorado: #D4A540;
+  --verde-ganancia: #8FBC6A;
   --linea: rgba(244, 239, 227, 0.14);
   --sombra: rgba(0, 0, 0, 0.25);
 
@@ -526,7 +527,7 @@ input:focus-visible {
 }
 
 .amount-pos {
-  color: var(--terracota);
+  color: var(--verde-ganancia);
 }
 
 .amount-neg {

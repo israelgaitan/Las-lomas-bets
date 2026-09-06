@@ -133,6 +133,17 @@ function defaultFriend(id, name) {
     biblia: 0,
     individualesTotal: 0,
     individualesHistorial: [],
+    // hándicap guardado de este amigo, por modalidad. Se rellena solo en
+    // el jugador de hoy en cuanto lo eliges de "Mis amigos", para no
+    // tener que volver a escribirlo cada ronda. Se actualiza con el
+    // botón "Guardar hándicap" en su tarjeta de jugador.
+    hcp: {
+      individuales: 0,
+      foursome: 0,
+      skins: 0,
+      loba: 0,
+      stableford: 0,
+    },
   };
 }
 
@@ -554,6 +565,10 @@ function migrateState(state) {
     // ya no se guarda Foursome por amigo (solo se pidió llevar Individuales)
     delete f.foursomeTotal;
     delete f.foursomeHistorial;
+    // amigos guardados antes de esta versión no tenían hándicap propio
+    if (!f.hcp) {
+      f.hcp = { individuales: 0, foursome: 0, skins: 0, loba: 0, stableford: 0 };
+    }
   });
   if (state.miPlayerId === undefined) {
     state.miPlayerId = state.players[0] ? state.players[0].id : 1;

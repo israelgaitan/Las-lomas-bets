@@ -123,10 +123,10 @@
 
     // Tab bar
     const tabs = [
-      { id: "config", icon: "⚙️", label: "Config" },
       { id: "hole", icon: "⛳", label: "Hoyo" },
       { id: "bets", icon: "💰", label: "Apuestas" },
       { id: "summary", icon: "🏆", label: "Resumen" },
+      { id: "config", icon: "⚙️", label: "Más" },
     ];
     const tabBar = el(`<div class="tab-bar"></div>`);
     tabs.forEach((t) => {

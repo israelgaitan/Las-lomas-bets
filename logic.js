@@ -1420,6 +1420,43 @@ function calcResumenGeneral(state) {
   };
 }
 
+/**
+ * Desglose de saldo por modalidad para UN jugador específico, a partir del
+ * resumen ya calculado (ver calcResumenGeneral). Se usa tanto para "yo"
+ * (compatibilidad con el CSV de siempre) como para TODOS los jugadores al
+ * archivar la ronda al historial completo.
+ */
+function calcDesglosePorJugador(resumen, playerId) {
+  const individuales = resumen.individualesResults.reduce((sum, r) => {
+    if (r.a === playerId) return sum + r.saldoA;
+    if (r.b === playerId) return sum - r.saldoA;
+    return sum;
+  }, 0);
+  const foursome = resumen.foursomeResults.reduce((sum, r) => {
+    if (r.base.includes(playerId)) return sum + r.saldoTotal;
+    if (r.rival.includes(playerId)) return sum - r.saldoTotal;
+    return sum;
+  }, 0);
+  return {
+    individuales,
+    foursome,
+    skins: resumen.skinsResult.totalesPorJugador[playerId] || 0,
+    loba: resumen.lobaResult.balances[playerId] || 0,
+    stableford: resumen.stablefordResult.balances[playerId] || 0,
+    banderas: resumen.banderasResult.balances[playerId] || 0,
+    threePutt: resumen.threePuttResult.balances[playerId] || 0,
+    chupes: resumen.chupesResult.balances[playerId] || 0,
+  };
+}
+
+/**
+ * Total de golpes brutos jugados por un jugador (suma nada más los hoyos
+ * ya capturados; si la ronda quedó a medias, es el total de lo jugado).
+ */
+function totalGolpesJugador(state, playerId) {
+  return (state.scores[playerId] || []).reduce((sum, g) => sum + (g || 0), 0);
+}
+
 /* ----------------------------------------------------------
    HISTORIAL: guardar el resultado de la ronda actual antes de resetear.
    ---------------------------------------------------------- */
@@ -1430,7 +1467,9 @@ function calcResumenGeneral(state) {
  *   el dinero que ganaste/perdiste contra él en INDIVIDUALES hoy, tomando
  *   como referencia a state.miPlayerId.
  * - Guarda una entrada en state.roundsHistory con tu saldo TOTAL del día
- *   (todas las modalidades activas).
+ *   (todas las modalidades activas), más el desglose completo de LOS 5
+ *   JUGADORES (no solo tú): golpes totales y saldo por modalidad de cada
+ *   uno, para poder consultarlo después sin abrir el Excel.
  * Muta el state que recibe (friends y roundsHistory); no toca nada más.
  * No hace nada si no hay ningún golpe registrado todavía.
  * @returns {boolean} true si guardó algo, false si no había nada que guardar
@@ -1460,31 +1499,23 @@ function archivarRonda(state) {
 
   // 2. Saldo total del día (todas las modalidades activas), guardado en el
   // historial general, más el desglose por modalidad (para exportar a Excel).
-  const indYo = resumen.individualesResults.reduce((sum, r) => {
-    if (r.a === yo) return sum + r.saldoA;
-    if (r.b === yo) return sum - r.saldoA;
-    return sum;
-  }, 0);
-  const fsYo = resumen.foursomeResults.reduce((sum, r) => {
-    if (r.base.includes(yo)) return sum + r.saldoTotal;
-    if (r.rival.includes(yo)) return sum - r.saldoTotal;
-    return sum;
-  }, 0);
+  const miDesglose = calcDesglosePorJugador(resumen, yo);
   state.roundsHistory.push({
     id: "r" + Date.now(),
     fecha,
     courseName: course.name,
     balanceYo: resumen.balances[yo] || 0,
-    desglose: {
-      individuales: indYo,
-      foursome: fsYo,
-      skins: resumen.skinsResult.totalesPorJugador[yo] || 0,
-      loba: resumen.lobaResult.balances[yo] || 0,
-      stableford: resumen.stablefordResult.balances[yo] || 0,
-      banderas: resumen.banderasResult.balances[yo] || 0,
-      threePutt: resumen.threePuttResult.balances[yo] || 0,
-      chupes: resumen.chupesResult.balances[yo] || 0,
-    },
+    desglose: miDesglose, // se mantiene igual que antes, por compatibilidad (CSV de "yo")
+    // desglose COMPLETO de los 5 jugadores de la ronda, no solo "yo" —
+    // para poder ver/consultar después cuánto ganó/perdió cada quien y
+    // en qué modalidad, sin tener que abrir el Excel.
+    jugadores: state.players.map((p) => ({
+      nombre: p.name,
+      friendId: p.friendId,
+      golpes: totalGolpesJugador(state, p.id),
+      total: resumen.balances[p.id] || 0,
+      desglose: calcDesglosePorJugador(resumen, p.id),
+    })),
   });
 
   return true;
