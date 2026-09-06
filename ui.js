@@ -343,191 +343,9 @@ function renderConfigScreen(state, onChange) {
   });
   wrap.appendChild(modalCard);
 
-  /* ---- FOURSOME: selector de formato (cruzado / round robin / normal) ---- */
-  if (state.bets.foursome.enabled) {
-    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome</h2>`));
-
-    const formatoCard = el(`
-      <div class="card">
-        <p class="card__subtitle" style="margin-bottom:8px">¿Qué formato juegan hoy?</p>
-        <select data-role="fs-formato" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;color:var(--crema);font-size:15px">
-          <option value="cruzado" ${state.bets.foursome.formato === "cruzado" ? "selected" : ""}>Foursome cruzado (5 jugadores, 3 cruces)</option>
-          <option value="roundRobin" ${state.bets.foursome.formato === "roundRobin" ? "selected" : ""}>Foursome Round Robin (4 jugadores, cambia de pareja cada 6 hoyos)</option>
-          <option value="normal" ${state.bets.foursome.formato === "normal" ? "selected" : ""}>Foursome normal (4 jugadores, misma pareja los 18 hoyos)</option>
-        </select>
-        <p class="help-text" style="margin:8px 0 0">Solo uno está activo a la vez. Cambiar de formato no borra la configuración de los otros 2, por si regresas a usarlos.</p>
-      </div>
-    `);
-    formatoCard.querySelector('[data-role="fs-formato"]').addEventListener("change", (e) => {
-      state.bets.foursome.formato = e.target.value;
-      onChange(state);
-    });
-    wrap.appendChild(formatoCard);
-
-    if (state.bets.foursome.formato === "cruzado") {
-      const participantesCard = el(`
-        <div class="card" style="margin-top:10px">
-          <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy?</p>
-        </div>
-      `);
-      state.players.forEach((p) => {
-        const checked = state.bets.foursome.participantes.includes(p.id);
-        const row = el(`
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
-            <input type="checkbox" data-fs-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
-            <span>${p.name}</span>
-          </label>
-        `);
-        row.querySelector("input").addEventListener("change", (e) => {
-          const id = p.id;
-          if (e.target.checked) {
-            if (!state.bets.foursome.participantes.includes(id)) state.bets.foursome.participantes.push(id);
-          } else {
-            state.bets.foursome.participantes = state.bets.foursome.participantes.filter((x) => x !== id);
-          }
-          const nParticipantes = state.bets.foursome.participantes.length;
-          if (nParticipantes !== 4 && nParticipantes !== 5) {
-            alert("Foursome cruzado necesita exactamente 4 o 5 participantes.");
-          }
-          if (!state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[0]) ||
-              !state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[1])) {
-            state.bets.foursome.basePlayers = state.bets.foursome.participantes.slice(0, 2);
-          }
-          const jugadoresFoursome = state.players.filter((pl) => state.bets.foursome.participantes.includes(pl.id));
-          state.bets.foursome.crosses = generarCrucesForusome(state.bets.foursome.basePlayers, jugadoresFoursome, state.bets.foursome.crosses);
-          onChange(state);
-        });
-        participantesCard.appendChild(row);
-      });
-      const nParticipantesActual = state.bets.foursome.participantes.length;
-      participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${nParticipantesActual === 4 ? "4 seleccionados: un solo cruce 2 vs 2." : nParticipantesActual === 5 ? "5 seleccionados: cruzado, 3 cruces contra las 3 combinaciones." : `⚠️ ${nParticipantesActual} seleccionados — elige exactamente 4 o 5.`}</p>`));
-      wrap.appendChild(participantesCard);
-
-      const jugadoresFoursomeActuales = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
-
-      const baseCard = el(`
-        <div class="card" style="margin-top:10px">
-          <p class="card__subtitle" style="margin-bottom:8px">${nParticipantesActual === 4 ? "Elige quiénes son hoy una pareja; los otros 2 forman la pareja rival." : "Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente."}</p>
-          <div class="field-row">
-            <div class="field">
-              <label>Base 1</label>
-              <select data-role="base1" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-                ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[0] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
-              </select>
-            </div>
-            <div class="field">
-              <label>Base 2</label>
-              <select data-role="base2" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-                ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[1] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-        </div>
-      `);
-      function actualizarBase() {
-        const b1 = parseInt(baseCard.querySelector('[data-role="base1"]').value);
-        const b2 = parseInt(baseCard.querySelector('[data-role="base2"]').value);
-        if (b1 === b2) {
-          alert("Los 2 jugadores de la base deben ser distintos.");
-          return;
-        }
-        state.bets.foursome.basePlayers = [b1, b2];
-        const jugadoresFoursome = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
-        state.bets.foursome.crosses = generarCrucesForusome([b1, b2], jugadoresFoursome, state.bets.foursome.crosses);
-        onChange(state);
-      }
-      baseCard.querySelector('[data-role="base1"]').addEventListener("change", actualizarBase);
-      baseCard.querySelector('[data-role="base2"]').addEventListener("change", actualizarBase);
-      wrap.appendChild(baseCard);
-    } else {
-      // roundRobin o normal: 4 jugadores exactos
-      const participantesCard = el(`
-        <div class="card" style="margin-top:10px">
-          <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy? (exactamente 4)</p>
-        </div>
-      `);
-      state.players.forEach((p) => {
-        const checked = state.bets.foursome.participantes4.includes(p.id);
-        const row = el(`
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
-            <input type="checkbox" data-rot-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
-            <span>${p.name}</span>
-          </label>
-        `);
-        row.querySelector("input").addEventListener("change", (e) => {
-          const id = p.id;
-          if (e.target.checked) {
-            if (!state.bets.foursome.participantes4.includes(id)) state.bets.foursome.participantes4.push(id);
-          } else {
-            state.bets.foursome.participantes4 = state.bets.foursome.participantes4.filter((x) => x !== id);
-          }
-          if (state.bets.foursome.participantes4.length !== 4) {
-            alert("Este formato necesita EXACTAMENTE 4 participantes.");
-          } else {
-            state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes4, state.bets.foursome.segmentos, state.round.hoyoInicial, state.bets.foursome.formato !== "normal");
-          }
-          onChange(state);
-        });
-        participantesCard.appendChild(row);
-      });
-      const n4Actual = state.bets.foursome.participantes4.length;
-      participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${n4Actual === 4 ? "4 seleccionados ✓" : `⚠️ ${n4Actual} seleccionados — elige exactamente 4.`}</p>`));
-      wrap.appendChild(participantesCard);
-
-      if (n4Actual === 4) {
-        const segCard = el(`<div class="card" style="margin-top:10px"></div>`);
-        const rotar = state.bets.foursome.formato === "roundRobin";
-        const [pa, pb, pc, pd] = state.bets.foursome.participantes4;
-        // las 3 formas posibles de partir 4 jugadores en 2 parejas
-        const opcionesPareja = [
-          { base: [pa, pb], rival: [pc, pd] },
-          { base: [pa, pc], rival: [pb, pd] },
-          { base: [pa, pd], rival: [pb, pc] },
-        ];
-        const claveDe = (o) => o.base.slice().sort().join(",") + "|" + o.rival.slice().sort().join(",");
-        const rangoHoyos = (seg) => {
-          if (!rotar) return "Los 18 hoyos";
-          const nums = seg.hoyos.map((x) => x + 1);
-          return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
-        };
-        const segmentosMostrados = rotar ? state.bets.foursome.segmentos : state.bets.foursome.segmentos.slice(0, 1);
-        segmentosMostrados.forEach((seg, i) => {
-          const claveActual = claveDe(seg);
-          const row = el(`
-            <div class="field" style="${i > 0 ? "margin-top:14px;padding-top:14px;border-top:1px solid var(--linea)" : ""}">
-              <label>${rangoHoyos(seg)} — ¿quién va con quién?</label>
-              <select data-seg-pareja="${seg.id}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema);margin-bottom:8px">
-                ${opcionesPareja.map((o) => {
-                  const bn = o.base.map((id) => playerName(state, id)).join(" + ");
-                  const rn = o.rival.map((id) => playerName(state, id)).join(" + ");
-                  return `<option value="${claveDe(o)}" ${claveDe(o) === claveActual ? "selected" : ""}>${bn} vs ${rn}</option>`;
-                }).join("")}
-              </select>
-              <input type="number" value="${seg.monto}" data-seg-monto="${seg.id}" placeholder="$ por hoyo" />
-            </div>
-          `);
-          row.querySelector("select").addEventListener("change", (e) => {
-            const elegida = opcionesPareja.find((o) => claveDe(o) === e.target.value);
-            if (elegida) {
-              seg.base = [...elegida.base];
-              seg.rival = [...elegida.rival];
-              onChange(state);
-            }
-          });
-          row.querySelector("input").addEventListener("input", (e) => {
-            seg.monto = parseFloat(e.target.value) || 0;
-            onChange(state, { skipRender: true });
-          });
-          row.querySelector("input").addEventListener("change", () => onChange(state));
-          segCard.appendChild(row);
-        });
-        if (rotar) {
-          segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}.</p>`));
-        }
-        wrap.appendChild(segCard);
-      }
-    }
-  }
+  /* (La configuración de Foursome — formato, quién juega, parejas base — se
+     movió a la pestaña Apuestas, junto con sus montos y resultados, para no
+     tener que ir y venir entre pestañas. Ver renderBetsScreen.) */
 
   /* ---- MONTOS ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Montos de las apuestas</h2>`));
@@ -1398,6 +1216,186 @@ function renderBetsScreen(state, onChange) {
     onChange(state);
   });
   wrap.appendChild(indCard);
+  }
+
+  /* ---- FOURSOME: formato, quién juega, parejas base (antes en Config) ---- */
+  if (state.bets.foursome.enabled) {
+    wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Foursome — configuración de hoy</h2>`));
+
+    const formatoCard = el(`
+      <div class="card">
+        <p class="card__subtitle" style="margin-bottom:8px">¿Qué formato juegan hoy?</p>
+        <select data-role="fs-formato" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;color:var(--crema);font-size:15px">
+          <option value="cruzado" ${state.bets.foursome.formato === "cruzado" ? "selected" : ""}>Foursome cruzado (5 jugadores, 3 cruces)</option>
+          <option value="roundRobin" ${state.bets.foursome.formato === "roundRobin" ? "selected" : ""}>Foursome Round Robin (4 jugadores, cambia de pareja cada 6 hoyos)</option>
+          <option value="normal" ${state.bets.foursome.formato === "normal" ? "selected" : ""}>Foursome normal (4 jugadores, misma pareja los 18 hoyos)</option>
+        </select>
+        <p class="help-text" style="margin:8px 0 0">Solo uno está activo a la vez. Cambiar de formato no borra la configuración de los otros 2, por si regresas a usarlos.</p>
+      </div>
+    `);
+    formatoCard.querySelector('[data-role="fs-formato"]').addEventListener("change", (e) => {
+      state.bets.foursome.formato = e.target.value;
+      onChange(state);
+    });
+    wrap.appendChild(formatoCard);
+
+    if (state.bets.foursome.formato === "cruzado") {
+      const participantesCard = el(`
+        <div class="card" style="margin-top:10px">
+          <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy?</p>
+        </div>
+      `);
+      state.players.forEach((p) => {
+        const checked = state.bets.foursome.participantes.includes(p.id);
+        const row = el(`
+          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
+            <input type="checkbox" data-fs-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+            <span>${p.name}</span>
+          </label>
+        `);
+        row.querySelector("input").addEventListener("change", (e) => {
+          const id = p.id;
+          if (e.target.checked) {
+            if (!state.bets.foursome.participantes.includes(id)) state.bets.foursome.participantes.push(id);
+          } else {
+            state.bets.foursome.participantes = state.bets.foursome.participantes.filter((x) => x !== id);
+          }
+          const nParticipantes = state.bets.foursome.participantes.length;
+          if (nParticipantes !== 4 && nParticipantes !== 5) {
+            alert("Foursome cruzado necesita exactamente 4 o 5 participantes.");
+          }
+          if (!state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[0]) ||
+              !state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[1])) {
+            state.bets.foursome.basePlayers = state.bets.foursome.participantes.slice(0, 2);
+          }
+          const jugadoresFoursome = state.players.filter((pl) => state.bets.foursome.participantes.includes(pl.id));
+          state.bets.foursome.crosses = generarCrucesForusome(state.bets.foursome.basePlayers, jugadoresFoursome, state.bets.foursome.crosses);
+          onChange(state);
+        });
+        participantesCard.appendChild(row);
+      });
+      const nParticipantesActual = state.bets.foursome.participantes.length;
+      participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${nParticipantesActual === 4 ? "4 seleccionados: un solo cruce 2 vs 2." : nParticipantesActual === 5 ? "5 seleccionados: cruzado, 3 cruces contra las 3 combinaciones." : `⚠️ ${nParticipantesActual} seleccionados — elige exactamente 4 o 5.`}</p>`));
+      wrap.appendChild(participantesCard);
+
+      const jugadoresFoursomeActuales = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+
+      const baseCard = el(`
+        <div class="card" style="margin-top:10px">
+          <p class="card__subtitle" style="margin-bottom:8px">${nParticipantesActual === 4 ? "Elige quiénes son hoy una pareja; los otros 2 forman la pareja rival." : "Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente."}</p>
+          <div class="field-row">
+            <div class="field">
+              <label>Base 1</label>
+              <select data-role="base1" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+                ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[0] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <label>Base 2</label>
+              <select data-role="base2" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+                ${jugadoresFoursomeActuales.map((p) => `<option value="${p.id}" ${state.bets.foursome.basePlayers[1] === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+        </div>
+      `);
+      function actualizarBase() {
+        const b1 = parseInt(baseCard.querySelector('[data-role="base1"]').value);
+        const b2 = parseInt(baseCard.querySelector('[data-role="base2"]').value);
+        if (b1 === b2) {
+          alert("Los 2 jugadores de la base deben ser distintos.");
+          return;
+        }
+        state.bets.foursome.basePlayers = [b1, b2];
+        const jugadoresFoursome = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+        state.bets.foursome.crosses = generarCrucesForusome([b1, b2], jugadoresFoursome, state.bets.foursome.crosses);
+        onChange(state);
+      }
+      baseCard.querySelector('[data-role="base1"]').addEventListener("change", actualizarBase);
+      baseCard.querySelector('[data-role="base2"]').addEventListener("change", actualizarBase);
+      wrap.appendChild(baseCard);
+    } else {
+      // roundRobin o normal: 4 jugadores exactos
+      const participantesCard = el(`
+        <div class="card" style="margin-top:10px">
+          <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy? (exactamente 4)</p>
+        </div>
+      `);
+      state.players.forEach((p) => {
+        const checked = state.bets.foursome.participantes4.includes(p.id);
+        const row = el(`
+          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
+            <input type="checkbox" data-rot-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+            <span>${p.name}</span>
+          </label>
+        `);
+        row.querySelector("input").addEventListener("change", (e) => {
+          const id = p.id;
+          if (e.target.checked) {
+            if (!state.bets.foursome.participantes4.includes(id)) state.bets.foursome.participantes4.push(id);
+          } else {
+            state.bets.foursome.participantes4 = state.bets.foursome.participantes4.filter((x) => x !== id);
+          }
+          if (state.bets.foursome.participantes4.length !== 4) {
+            alert("Este formato necesita EXACTAMENTE 4 participantes.");
+          } else {
+            state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes4, state.bets.foursome.segmentos, state.round.hoyoInicial, state.bets.foursome.formato !== "normal");
+          }
+          onChange(state);
+        });
+        participantesCard.appendChild(row);
+      });
+      const n4Actual = state.bets.foursome.participantes4.length;
+      participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${n4Actual === 4 ? "4 seleccionados ✓" : `⚠️ ${n4Actual} seleccionados — elige exactamente 4.`}</p>`));
+      wrap.appendChild(participantesCard);
+
+      if (n4Actual === 4) {
+        const segCard = el(`<div class="card" style="margin-top:10px"></div>`);
+        const rotar = state.bets.foursome.formato === "roundRobin";
+        const [pa, pb, pc, pd] = state.bets.foursome.participantes4;
+        // las 3 formas posibles de partir 4 jugadores en 2 parejas
+        const opcionesPareja = [
+          { base: [pa, pb], rival: [pc, pd] },
+          { base: [pa, pc], rival: [pb, pd] },
+          { base: [pa, pd], rival: [pb, pc] },
+        ];
+        const claveDe = (o) => o.base.slice().sort().join(",") + "|" + o.rival.slice().sort().join(",");
+        const rangoHoyos = (seg) => {
+          if (!rotar) return "Los 18 hoyos";
+          const nums = seg.hoyos.map((x) => x + 1);
+          return `Hoyos ${nums[0]}-${nums[nums.length - 1]}`;
+        };
+        const segmentosMostrados = rotar ? state.bets.foursome.segmentos : state.bets.foursome.segmentos.slice(0, 1);
+        segmentosMostrados.forEach((seg, i) => {
+          const claveActual = claveDe(seg);
+          const row = el(`
+            <div class="field" style="${i > 0 ? "margin-top:14px;padding-top:14px;border-top:1px solid var(--linea)" : ""}">
+              <label>${rangoHoyos(seg)} — ¿quién va con quién?</label>
+              <select data-seg-pareja="${seg.id}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
+                ${opcionesPareja.map((o) => {
+                  const bn = o.base.map((id) => playerName(state, id)).join(" + ");
+                  const rn = o.rival.map((id) => playerName(state, id)).join(" + ");
+                  return `<option value="${claveDe(o)}" ${claveDe(o) === claveActual ? "selected" : ""}>${bn} vs ${rn}</option>`;
+                }).join("")}
+              </select>
+            </div>
+          `);
+          row.querySelector("select").addEventListener("change", (e) => {
+            const elegida = opcionesPareja.find((o) => claveDe(o) === e.target.value);
+            if (elegida) {
+              seg.base = [...elegida.base];
+              seg.rival = [...elegida.rival];
+              onChange(state);
+            }
+          });
+          segCard.appendChild(row);
+        });
+        if (rotar) {
+          segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}. El monto de cada bloque se ajusta abajo, junto a su resultado.</p>`));
+        }
+        wrap.appendChild(segCard);
+      }
+    }
   }
 
   /* ---- FOURSOME ---- */
