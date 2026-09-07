@@ -98,6 +98,13 @@
       fresh.friends = friendsToKeep;
       fresh.roundsHistory = historyToKeep;
       fresh.miPlayerId = miPlayerIdToKeep;
+      // pre-marca en el lugar 1 al amigo marcado con ⭐ como "tú", si existe
+      const yo = friendsToKeep.find((f) => f.esYo);
+      if (yo) {
+        fresh.players[0].name = yo.name;
+        fresh.players[0].friendId = yo.id;
+        fresh.players[0].hcp = { ...yo.hcp };
+      }
       // si la cancha que estaba activa ya no existe (no debería pasar, pero
       // por seguridad), usamos la primera disponible
       fresh.round.courseId = coursesToKeep.some((c) => c.id === state.round.courseId)

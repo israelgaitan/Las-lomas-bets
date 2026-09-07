@@ -133,6 +133,10 @@ function defaultFriend(id, name) {
     biblia: 0,
     individualesTotal: 0,
     individualesHistorial: [],
+    // true en UN solo amigo de la lista: el que eres tú. Se usa para
+    // pre-marcarlo solo en "Jugadores de hoy" cada vez que arrancas una
+    // ronda nueva (pero se puede desmarcar ese día si no juegas).
+    esYo: false,
     // hándicap guardado de este amigo, por modalidad. Se rellena solo en
     // el jugador de hoy en cuanto lo eliges de "Mis amigos", para no
     // tener que volver a escribirlo cada ronda. Se actualiza con el
@@ -318,7 +322,7 @@ function newState() {
         participantes: [1, 2, 3, 4, 5],
       },
       loba: {
-        enabled: true,
+        enabled: false,
         // monto base por jugador (como el "$100" del ejemplo)
         monto: 0,
         // Loba usa el hcp completo (100%), igual que las demás
@@ -569,6 +573,7 @@ function migrateState(state) {
     if (!f.hcp) {
       f.hcp = { individuales: 0, foursome: 0, skins: 0, loba: 0, stableford: 0 };
     }
+    if (f.esYo === undefined) f.esYo = false;
   });
   if (state.miPlayerId === undefined) {
     state.miPlayerId = state.players[0] ? state.players[0].id : 1;

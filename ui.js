@@ -157,7 +157,7 @@ function renderConfigScreen(state, onChange) {
 
   /* ---- MIS AMIGOS (lista permanente + biblia) ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Mis amigos</h2>`));
-  wrap.appendChild(el(`<p class="help-text">Guarda aquí a la gente con la que juegas seguido. La "biblia" es un número que tú ajustas a mano (gana → sube o baja, según tu acuerdo) y queda guardado como referencia; el hándicap del día en "Jugadores y hándicap" siempre lo pones tú abajo.</p>`));
+  wrap.appendChild(el(`<p class="help-text">Guarda aquí a la gente con la que juegas seguido. Toca la ⭐ junto a tu nombre para marcarte como "tú" — así sales pre-marcado siempre en "Jugadores de hoy" (lo puedes desmarcar cualquier día que no juegues). La "biblia" es un número que tú ajustas a mano (gana → sube o baja, según tu acuerdo) y queda guardado como referencia; el hándicap del día en "Jugadores y hándicap" siempre lo pones tú abajo.</p>`));
 
   const friendsCard = el(`<div class="card"></div>`);
   if (state.friends.length === 0) {
@@ -170,6 +170,7 @@ function renderConfigScreen(state, onChange) {
         const row = el(`
           <div style="margin-bottom:10px">
             <div class="field-row" style="align-items:center;gap:8px">
+              <button class="btn btn-small" data-act="marcar-yo" style="flex-shrink:0;padding:8px 9px;${f.esYo ? "background:var(--dorado);color:var(--verde-campo-oscuro)" : "background:rgba(0,0,0,0.2)"}">${f.esYo ? "⭐ Yo" : "☆"}</button>
               <input type="text" value="${f.name}" data-role="friend-name" style="flex:1;min-width:0;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:8px;padding:8px 10px;color:var(--crema)" />
               <div class="stepper" style="flex-shrink:0">
                 <button class="stepper__btn" data-act="biblia-minus">−</button>
@@ -181,6 +182,12 @@ function renderConfigScreen(state, onChange) {
             <p class="help-text" style="margin:4px 0 0">Individuales histórico: <span class="${moneyClass(f.individualesTotal)}">${fmtMoney(f.individualesTotal)}</span></p>
           </div>
         `);
+        row.querySelector('[data-act="marcar-yo"]').addEventListener("click", () => {
+          const yaEraYo = f.esYo;
+          state.friends.forEach((x) => (x.esYo = false));
+          f.esYo = !yaEraYo;
+          onChange(state);
+        });
         row.querySelector('[data-role="friend-name"]').addEventListener("input", (e) => {
           f.name = e.target.value;
           onChange(state, { skipRender: true });
@@ -212,6 +219,53 @@ function renderConfigScreen(state, onChange) {
   wrap.appendChild(addFriendBtn);
 
   /* ---- JUGADORES ---- */
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores de hoy</h2>`));
+  wrap.appendChild(el(`<p class="help-text">Marca hasta 5 de tus amigos — se acomodan solos en los lugares de abajo, con su hándicap ya cargado. Quien tengas marcado como "tú" (⭐ arriba) sale premarcado siempre.</p>`));
+  const seleccionCard = el(`<div class="card"></div>`);
+  if (state.friends.length === 0) {
+    seleccionCard.appendChild(el(`<p class="help-text" style="margin:0">Agrega amigos arriba para poder elegirlos rápido aquí.</p>`));
+  } else {
+    state.friends
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((f) => {
+        const enUso = state.players.some((p) => p.friendId === f.id);
+        const row = el(`
+          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
+            <input type="checkbox" data-role="jugador-hoy" data-friend-id="${f.id}" ${enUso ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+            <span>${f.name}</span>
+          </label>
+        `);
+        row.querySelector("input").addEventListener("change", (e) => {
+          if (e.target.checked) {
+            const nEnUso = state.players.filter((p) => p.friendId).length;
+            if (nEnUso >= 5) {
+              alert("Ya tienes 5 jugadores marcados. Desmarca a alguien primero para agregar a otro.");
+              e.target.checked = false;
+              return;
+            }
+            // ocupa el primer lugar libre (sin amigo asignado todavía)
+            const slotLibre = state.players.find((p) => !p.friendId);
+            if (slotLibre) {
+              slotLibre.name = f.name;
+              slotLibre.friendId = f.id;
+              slotLibre.hcp = { ...f.hcp };
+            }
+          } else {
+            // libera el lugar que tenía este amigo, lo regresa a placeholder
+            const slot = state.players.find((p) => p.friendId === f.id);
+            if (slot) {
+              slot.name = `Jugador ${slot.id}`;
+              slot.friendId = null;
+            }
+          }
+          onChange(state);
+        });
+        seleccionCard.appendChild(row);
+      });
+  }
+  wrap.appendChild(seleccionCard);
+
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores y hándicap</h2>`));
   wrap.appendChild(el(`<p class="help-text">Cada jugador puede llevar un hándicap distinto por modalidad (ej: acuerdos históricos que no siguen el hcp oficial actual).</p>`));
 
