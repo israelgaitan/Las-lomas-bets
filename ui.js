@@ -555,39 +555,6 @@ function renderConfigScreen(state, onChange) {
    PANTALLA: TARJETA DE HOYO
    ============================================================ */
 
-/**
- * true si los 5 jugadores ya tienen un golpe capturado en este hoyo
- * (índice 0-based h). Se usa para detectar el momento EXACTO en que un
- * hoyo pasa de incompleto a completo, y así avanzar solo, sin repetir el
- * avance cada vez que se corrige un score ya completo.
- */
-function todosLosJugadoresTienenScore(state, h) {
-  return state.players.every((pl) => state.scores[pl.id][h] !== null);
-}
-
-/**
- * Avanza automáticamente al siguiente hoyo cuando se acaba de completar
- * el score de los 5 jugadores (transición incompleto -> completo). Da un
- * pequeño respiro (550ms) para que se alcance a ver el último número/badge
- * capturado antes de saltar de hoyo. Si el usuario ya se movió a mano a
- * otro hoyo mientras tanto, no lo interrumpe.
- */
-function avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange) {
-  if (previamenteCompleto) return; // ya estaba completo antes de este cambio
-  if (!todosLosJugadoresTienenScore(state, h)) return; // todavía falta alguien
-  setTimeout(() => {
-    if (state.round.currentHole - 1 !== h) return; // el usuario ya se movió a mano
-    if (h < 17) {
-      state.round.currentHole = h + 2;
-    } else if (arrancaEn10) {
-      state.round.currentHole = 1;
-    } else {
-      return; // hoyo 18 sin arranque en 10: ya no hay a dónde avanzar
-    }
-    onChange(state);
-  }, 550);
-}
-
 function renderHoleScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const h = state.round.currentHole - 1; // índice 0-based
@@ -790,20 +757,16 @@ function renderHoleScreen(state, onChange) {
     }
 
     row.querySelector('[data-act="minus"]').addEventListener("click", () => {
-      const previamenteCompleto = todosLosJugadoresTienenScore(state, h);
       const cur = currentBruto();
       const next = cur === null ? Math.max(1, par - 1) : Math.max(1, cur - 1);
       state.scores[p.id][h] = next;
       onChange(state);
-      avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange);
     });
     row.querySelector('[data-act="plus"]').addEventListener("click", () => {
-      const previamenteCompleto = todosLosJugadoresTienenScore(state, h);
       const cur = currentBruto();
       const next = cur === null ? par : cur + 1;
       state.scores[p.id][h] = next;
       onChange(state);
-      avanzarSiHoyoRecienCompletado(state, h, arrancaEn10, previamenteCompleto, onChange);
     });
     row.querySelector('[data-act="metida"]').addEventListener("click", () => {
       state.metidas[p.id][h] = !state.metidas[p.id][h];
