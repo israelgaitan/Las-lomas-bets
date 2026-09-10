@@ -104,6 +104,7 @@
         fresh.players[0].name = yo.name;
         fresh.players[0].friendId = yo.id;
         fresh.players[0].hcp = { ...yo.hcp };
+        fresh.miPlayerId = fresh.players[0].id; // mantiene sincronizado "quién soy yo"
       }
       // si la cancha que estaba activa ya no existe (no debería pasar, pero
       // por seguridad), usamos la primera disponible

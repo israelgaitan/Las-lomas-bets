@@ -250,6 +250,10 @@ function renderConfigScreen(state, onChange) {
               slotLibre.name = f.name;
               slotLibre.friendId = f.id;
               slotLibre.hcp = { ...f.hcp };
+              // si este amigo es "tú" (⭐), este lugar pasa a ser "quién
+              // soy yo" para el historial — así el historial y "cuánto le
+              // he ganado a cada quien" se calculan de la persona correcta.
+              if (f.esYo) state.miPlayerId = slotLibre.id;
             }
           } else {
             // libera el lugar que tenía este amigo, lo regresa a placeholder
@@ -345,6 +349,10 @@ function renderConfigScreen(state, onChange) {
           // recupera el hándicap guardado de este amigo, para no
           // tener que volver a escribirlo cada ronda.
           p.hcp = { ...friend.hcp };
+          // si este amigo es "tú" (⭐), este lugar pasa a ser "quién soy yo"
+          // para el historial — evita que el historial se guarde a nombre
+          // de otro jugador si el ⭐ no cayó en el lugar de siempre.
+          if (friend.esYo) state.miPlayerId = p.id;
           onChange(state);
         }
       });
@@ -1958,9 +1966,11 @@ function renderSummaryScreen(state, onChange) {
   wrap.appendChild(breakdown);
 
   /* ---- HISTORIAL DE RONDAS GUARDADAS ---- */
-  if (state.roundsHistory.length > 0) {
+  wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
+  if (state.roundsHistory.length === 0) {
+    wrap.appendChild(el(`<p class="help-text">Todavía no tienes ninguna ronda guardada aquí. Se guarda sola cada vez que le das "Resetear ronda" con golpes ya capturados en esa ronda.</p>`));
+  } else {
     const totalAcumulado = state.roundsHistory.reduce((sum, r) => sum + r.balanceYo, 0);
-    wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
 
     // Estadísticas rápidas de las últimas 10 rondas (o menos, si no llevas
     // 10 todavía) — puro resumen de lo que ya está en el historial, no
