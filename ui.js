@@ -1792,6 +1792,152 @@ function sumaGolpesBrutos(state, playerId, desde, hasta) {
   return { suma, jugados };
 }
 
+/**
+ * Pinta la sección de historial de rondas guardadas (siempre visible, sin
+ * importar si la ronda ACTUAL ya tiene golpes capturados o no — el
+ * historial es sobre rondas pasadas, no sobre la de hoy).
+ */
+function apendHistorialDeRondas(wrap, state) {
+  wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
+  if (state.roundsHistory.length === 0) {
+    wrap.appendChild(el(`<p class="help-text">Todavía no tienes ninguna ronda guardada aquí. Se guarda sola cada vez que le das "Resetear ronda" con golpes ya capturados en esa ronda.</p>`));
+    return;
+  }
+  const totalAcumulado = state.roundsHistory.reduce((sum, r) => sum + r.balanceYo, 0);
+
+  // Estadísticas rápidas de las últimas 10 rondas (o menos, si no llevas
+  // 10 todavía) — puro resumen de lo que ya está en el historial, no
+  // guarda nada nuevo.
+  const ultimas10 = state.roundsHistory.slice(-10);
+  const promedio = ultimas10.reduce((sum, r) => sum + r.balanceYo, 0) / ultimas10.length;
+  const victorias = ultimas10.filter((r) => r.balanceYo > 0).length;
+  const derrotas = ultimas10.filter((r) => r.balanceYo < 0).length;
+  const mejorRonda = Math.max(...ultimas10.map((r) => r.balanceYo));
+  const peorRonda = Math.min(...ultimas10.map((r) => r.balanceYo));
+  const statsCard = el(`
+    <div class="card" style="margin-bottom:10px">
+      <p class="card__subtitle" style="margin-bottom:8px">Estadísticas · últimas ${ultimas10.length} ronda${ultimas10.length === 1 ? "" : "s"}</p>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px">
+        <div>
+          <div class="help-text" style="margin:0">Promedio</div>
+          <div class="${moneyClass(promedio)}" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(Math.round(promedio))} / ronda</div>
+        </div>
+        <div>
+          <div class="help-text" style="margin:0">Victorias / Derrotas</div>
+          <div style="font-weight:600;font-family:var(--font-mono)">${victorias} / ${derrotas}</div>
+        </div>
+        <div>
+          <div class="help-text" style="margin:0">Mejor ronda</div>
+          <div class="amount-pos" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(mejorRonda)}</div>
+        </div>
+        <div>
+          <div class="help-text" style="margin:0">Peor ronda</div>
+          <div class="amount-neg" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(peorRonda)}</div>
+        </div>
+      </div>
+    </div>
+  `);
+  wrap.appendChild(statsCard);
+
+  const histCard = el(`<div class="card"></div>`);
+  histCard.appendChild(el(`
+    <div class="balance-row" style="border-bottom:1px solid var(--linea);margin-bottom:8px;padding-bottom:8px">
+      <span class="balance-row__name">Saldo acumulado (${state.roundsHistory.length} ronda${state.roundsHistory.length === 1 ? "" : "s"})</span>
+      <span class="balance-row__amount ${moneyClass(totalAcumulado)}">${fmtMoney(totalAcumulado)}</span>
+    </div>
+  `));
+  state.roundsHistory
+    .slice()
+    .reverse()
+    .forEach((r) => {
+      const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+      const rondaBlock = el(`<div style="padding:7px 0;border-bottom:1px solid var(--linea)"></div>`);
+      const header = el(`
+        <div class="match-row" style="border-bottom:none;padding:0;cursor:pointer">
+          <span class="match-row__names" style="font-size:14px">${fechaFmt} · ${r.courseName}</span>
+          <span class="match-row__amount ${moneyClass(r.balanceYo)}" style="font-size:15px;font-weight:600">${fmtMoney(r.balanceYo)}</span>
+        </div>
+      `);
+      rondaBlock.appendChild(header);
+      if (r.jugadores && r.jugadores.length > 0) {
+        const detalleWrap = el(`<div style="display:none;margin-top:8px"></div>`);
+        r.jugadores.forEach((j) => {
+          const jugadorBlock = el(`
+            <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06)">
+              <div class="balance-row" style="padding:2px 0">
+                <span class="balance-row__name">${j.nombre}${j.golpes > 0 ? ` <span class="help-text" style="font-size:11px">· ${j.golpes} golpes</span>` : ""}</span>
+                <span class="balance-row__amount ${moneyClass(j.total)}">${fmtMoney(j.total)}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px 10px;margin-top:4px">
+                ${[
+                  ["Individuales", j.desglose.individuales],
+                  ["Foursome", j.desglose.foursome],
+                  ["Skins", j.desglose.skins],
+                  ["Loba", j.desglose.loba],
+                  ["Stableford", j.desglose.stableford],
+                  ["Banderas", j.desglose.banderas + j.desglose.threePutt + j.desglose.chupes],
+                ]
+                  .filter(([, monto]) => monto !== 0)
+                  .map(([label, monto]) => `<span class="help-text" style="font-size:12px">${label}: <span class="${moneyClass(monto)}">${fmtMoney(monto)}</span></span>`)
+                  .join("")}
+              </div>
+            </div>
+          `);
+          detalleWrap.appendChild(jugadorBlock);
+        });
+        rondaBlock.appendChild(detalleWrap);
+        header.addEventListener("click", () => {
+          detalleWrap.style.display = detalleWrap.style.display === "none" ? "block" : "none";
+        });
+      }
+      histCard.appendChild(rondaBlock);
+    });
+  wrap.appendChild(histCard);
+  wrap.appendChild(el(`<p class="help-text">Toca una ronda para ver el desglose de cada jugador. Se guarda automáticamente cada vez que tocas "Resetear ronda" con golpes ya registrados.</p>`));
+
+  const exportCsvBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:8px">Exportar historial a Excel</button>`);
+  exportCsvBtn.addEventListener("click", () => {
+    const columnas = ["Fecha", "Cancha", "Individuales", "Foursome", "Skins", "Loba", "Stableford", "Banderas", "3-putt", "Chupes", "Total"];
+    const filasCsv = [columnas.join(",")];
+    state.roundsHistory.forEach((r) => {
+      const d = r.desglose || {};
+      const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const fila = [
+        fechaFmt,
+        `"${r.courseName.replace(/"/g, '""')}"`,
+        d.individuales || 0,
+        d.foursome || 0,
+        d.skins || 0,
+        d.loba || 0,
+        d.stableford || 0,
+        d.banderas || 0,
+        d.threePutt || 0,
+        d.chupes || 0,
+        r.balanceYo,
+      ];
+      filasCsv.push(fila.join(","));
+    });
+    // BOM al inicio para que Excel abra los acentos bien (ej. "Cañadas")
+    const csvContent = "\uFEFF" + filasCsv.join("\r\n");
+    const fecha = new Date().toISOString().slice(0, 10);
+    const filename = `las-lomas-bets-historial-${fecha}.csv`;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "text/csv" })] })) {
+      navigator.share({ files: [new File([blob], filename, { type: "text/csv" })], title: "Historial Las Lomas Bets" }).catch(() => {});
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  });
+  wrap.appendChild(exportCsvBtn);
+}
+
 function renderSummaryScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const resumen = calcResumenGeneral(state);
@@ -1805,6 +1951,7 @@ function renderSummaryScreen(state, onChange) {
         Aún no hay golpes registrados.<br/>Empieza a anotar en la pestaña Hoyo.
       </div>
     `));
+    apendHistorialDeRondas(wrap, state);
     return wrap;
   }
 
@@ -1966,144 +2113,7 @@ function renderSummaryScreen(state, onChange) {
   wrap.appendChild(breakdown);
 
   /* ---- HISTORIAL DE RONDAS GUARDADAS ---- */
-  wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
-  if (state.roundsHistory.length === 0) {
-    wrap.appendChild(el(`<p class="help-text">Todavía no tienes ninguna ronda guardada aquí. Se guarda sola cada vez que le das "Resetear ronda" con golpes ya capturados en esa ronda.</p>`));
-  } else {
-    const totalAcumulado = state.roundsHistory.reduce((sum, r) => sum + r.balanceYo, 0);
-
-    // Estadísticas rápidas de las últimas 10 rondas (o menos, si no llevas
-    // 10 todavía) — puro resumen de lo que ya está en el historial, no
-    // guarda nada nuevo.
-    const ultimas10 = state.roundsHistory.slice(-10);
-    const promedio = ultimas10.reduce((sum, r) => sum + r.balanceYo, 0) / ultimas10.length;
-    const victorias = ultimas10.filter((r) => r.balanceYo > 0).length;
-    const derrotas = ultimas10.filter((r) => r.balanceYo < 0).length;
-    const mejorRonda = Math.max(...ultimas10.map((r) => r.balanceYo));
-    const peorRonda = Math.min(...ultimas10.map((r) => r.balanceYo));
-    const statsCard = el(`
-      <div class="card" style="margin-bottom:10px">
-        <p class="card__subtitle" style="margin-bottom:8px">Estadísticas · últimas ${ultimas10.length} ronda${ultimas10.length === 1 ? "" : "s"}</p>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px">
-          <div>
-            <div class="help-text" style="margin:0">Promedio</div>
-            <div class="${moneyClass(promedio)}" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(Math.round(promedio))} / ronda</div>
-          </div>
-          <div>
-            <div class="help-text" style="margin:0">Victorias / Derrotas</div>
-            <div style="font-weight:600;font-family:var(--font-mono)">${victorias} / ${derrotas}</div>
-          </div>
-          <div>
-            <div class="help-text" style="margin:0">Mejor ronda</div>
-            <div class="amount-pos" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(mejorRonda)}</div>
-          </div>
-          <div>
-            <div class="help-text" style="margin:0">Peor ronda</div>
-            <div class="amount-neg" style="font-weight:600;font-family:var(--font-mono)">${fmtMoney(peorRonda)}</div>
-          </div>
-        </div>
-      </div>
-    `);
-    wrap.appendChild(statsCard);
-
-    const histCard = el(`<div class="card"></div>`);
-    histCard.appendChild(el(`
-      <div class="balance-row" style="border-bottom:1px solid var(--linea);margin-bottom:8px;padding-bottom:8px">
-        <span class="balance-row__name">Saldo acumulado (${state.roundsHistory.length} ronda${state.roundsHistory.length === 1 ? "" : "s"})</span>
-        <span class="balance-row__amount ${moneyClass(totalAcumulado)}">${fmtMoney(totalAcumulado)}</span>
-      </div>
-    `));
-    state.roundsHistory
-      .slice()
-      .reverse()
-      .forEach((r) => {
-        const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
-        const rondaBlock = el(`<div style="padding:7px 0;border-bottom:1px solid var(--linea)"></div>`);
-        const header = el(`
-          <div class="match-row" style="border-bottom:none;padding:0;cursor:pointer">
-            <span class="match-row__names" style="font-size:14px">${fechaFmt} · ${r.courseName}</span>
-            <span class="match-row__amount ${moneyClass(r.balanceYo)}" style="font-size:15px;font-weight:600">${fmtMoney(r.balanceYo)}</span>
-          </div>
-        `);
-        rondaBlock.appendChild(header);
-        if (r.jugadores && r.jugadores.length > 0) {
-          const detalleWrap = el(`<div style="display:none;margin-top:8px"></div>`);
-          r.jugadores.forEach((j) => {
-            const jugadorBlock = el(`
-              <div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06)">
-                <div class="balance-row" style="padding:2px 0">
-                  <span class="balance-row__name">${j.nombre}${j.golpes > 0 ? ` <span class="help-text" style="font-size:11px">· ${j.golpes} golpes</span>` : ""}</span>
-                  <span class="balance-row__amount ${moneyClass(j.total)}">${fmtMoney(j.total)}</span>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px 10px;margin-top:4px">
-                  ${[
-                    ["Individuales", j.desglose.individuales],
-                    ["Foursome", j.desglose.foursome],
-                    ["Skins", j.desglose.skins],
-                    ["Loba", j.desglose.loba],
-                    ["Stableford", j.desglose.stableford],
-                    ["Banderas", j.desglose.banderas + j.desglose.threePutt + j.desglose.chupes],
-                  ]
-                    .filter(([, monto]) => monto !== 0)
-                    .map(([label, monto]) => `<span class="help-text" style="font-size:12px">${label}: <span class="${moneyClass(monto)}">${fmtMoney(monto)}</span></span>`)
-                    .join("")}
-                </div>
-              </div>
-            `);
-            detalleWrap.appendChild(jugadorBlock);
-          });
-          rondaBlock.appendChild(detalleWrap);
-          header.addEventListener("click", () => {
-            detalleWrap.style.display = detalleWrap.style.display === "none" ? "block" : "none";
-          });
-        }
-        histCard.appendChild(rondaBlock);
-      });
-    wrap.appendChild(histCard);
-    wrap.appendChild(el(`<p class="help-text">Toca una ronda para ver el desglose de cada jugador. Se guarda automáticamente cada vez que tocas "Resetear ronda" con golpes ya registrados.</p>`));
-
-    const exportCsvBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:8px">Exportar historial a Excel</button>`);
-    exportCsvBtn.addEventListener("click", () => {
-      const columnas = ["Fecha", "Cancha", "Individuales", "Foursome", "Skins", "Loba", "Stableford", "Banderas", "3-putt", "Chupes", "Total"];
-      const filasCsv = [columnas.join(",")];
-      state.roundsHistory.forEach((r) => {
-        const d = r.desglose || {};
-        const fechaFmt = new Date(r.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-        const fila = [
-          fechaFmt,
-          `"${r.courseName.replace(/"/g, '""')}"`,
-          d.individuales || 0,
-          d.foursome || 0,
-          d.skins || 0,
-          d.loba || 0,
-          d.stableford || 0,
-          d.banderas || 0,
-          d.threePutt || 0,
-          d.chupes || 0,
-          r.balanceYo,
-        ];
-        filasCsv.push(fila.join(","));
-      });
-      // BOM al inicio para que Excel abra los acentos bien (ej. "Cañadas")
-      const csvContent = "\uFEFF" + filasCsv.join("\r\n");
-      const fecha = new Date().toISOString().slice(0, 10);
-      const filename = `las-lomas-bets-historial-${fecha}.csv`;
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
-      if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "text/csv" })] })) {
-        navigator.share({ files: [new File([blob], filename, { type: "text/csv" })], title: "Historial Las Lomas Bets" }).catch(() => {});
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-    });
-    wrap.appendChild(exportCsvBtn);
-  }
+  apendHistorialDeRondas(wrap, state);
 
   return wrap;
 }
