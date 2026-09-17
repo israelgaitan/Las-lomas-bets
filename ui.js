@@ -626,6 +626,31 @@ function renderHoleScreen(state, onChange) {
   }
   wrap.appendChild(progress);
 
+  // Botón para borrar una jugada incompleta/equivocada de este hoyo: pone
+  // los golpes y marcas (unidad, banderas, 3-putt, chupes, oyes, loba) de
+  // TODOS los jugadores en este hoyo de vuelta a "no jugado", sin tocar
+  // ningún otro hoyo. Así el acumulado deja de contarlo, como si nunca se
+  // hubiera capturado. Solo se muestra si ya hay algo capturado en el hoyo.
+  const hoyoTieneDatos = state.players.some((p) => state.scores[p.id][h] !== null);
+  if (hoyoTieneDatos) {
+    const borrarBtn = el(`
+      <button class="btn btn-ghost btn-small" data-act="borrar-hoyo" style="width:100%;margin-bottom:16px">🗑️ Borrar jugada del hoyo ${h + 1}</button>
+    `);
+    borrarBtn.addEventListener("click", () => {
+      const ok = confirm(`¿Borrar la jugada del hoyo ${h + 1}? Se borrarán los golpes y marcas (Unidad, banderas, 3-putt, chupes, oyes, Loba) de este hoyo para los 5 jugadores, y ya no contará en ningún acumulado. Los demás hoyos no se tocan.`);
+      if (!ok) return;
+      state.players.forEach((p) => {
+        state.scores[p.id][h] = null;
+        state.metidas[p.id][h] = false;
+        state.banderas[p.id][h] = { banderas: 0, threePutt: false, chupes: 0 };
+      });
+      if (state.oyesOrden && state.oyesOrden[h]) state.oyesOrden[h] = {};
+      if (state.loba && state.loba[h]) state.loba[h] = { loba: null, companero: null, multiplicador: 1 };
+      onChange(state);
+    });
+    wrap.appendChild(borrarBtn);
+  }
+
   // Ventaja en este hoyo: quién recibe golpe, modalidad por modalidad
   // (cada una puede llevar hándicaps distintos, así que la ventaja no es
   // necesariamente la misma persona en todas). Se guarda por jugador para
