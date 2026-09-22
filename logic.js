@@ -20,6 +20,32 @@ function repartirGolpesPorDificultad(diff, strokeIndex) {
 }
 
 /**
+ * Devuelve el strokeIndex "efectivo" a usar para repartir ventajas. Por
+ * default (invertir=false) es el strokeIndex real de la cancha, ligado a
+ * cada hoyo físico sin importar por dónde arranca la ronda.
+ *
+ * Con invertir=true, se intercambia el bloque de ida (hoyos 1-9) con el de
+ * vuelta (hoyos 10-18): el hoyo 1 recibe el strokeIndex real del hoyo 10, el
+ * 2 el del 11, etc. Esto es una decisión MANUAL del usuario (botón en
+ * Config), independiente de hoyoInicial — no se activa solo por arrancar en
+ * el hoyo 10. Sirve para grupos que reparten sus ventajas por "mitad de
+ * cancha que se juega primero" en vez de por la dificultad real de cada
+ * hoyo.
+ * @param {Array<number>} strokeIndex - 18 valores, strokeIndex real de la cancha
+ * @param {boolean} invertir
+ * @returns {Array<number>} 18 valores, strokeIndex a usar en los cálculos
+ */
+function strokeIndexEfectivo(strokeIndex, invertir) {
+  if (!invertir) return strokeIndex;
+  const inv = new Array(18);
+  for (let i = 0; i < 9; i++) {
+    inv[i] = strokeIndex[i + 9];
+    inv[i + 9] = strokeIndex[i];
+  }
+  return inv;
+}
+
+/**
  * Porcentaje del hándicap que se usa SOLO para loba (algunos grupos juegan
  * loba con el hcp recortado, ej: 80%, en vez del 100% de las demás modalidades).
  */
@@ -1287,6 +1313,7 @@ function calcResumenHastaHoyo(state, posicionEnOrden) {
 function calcResumenGeneral(state) {
   const { players, scores, bets, round } = state;
   const course = getActiveCourse(state);
+  const siEfectivo = strokeIndexEfectivo(course.strokeIndex, round.invertirVentajas);
 
   const balances = {};
   players.forEach((p) => (balances[p.id] = 0));
@@ -1298,8 +1325,8 @@ function calcResumenGeneral(state) {
   const individualesResults = bets.individuales.enabled
     ? bets.individuales.matches.map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
-        const ventajasPartido = calcGolpesVentaja(jugadoresPartido, course.strokeIndex, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, course.strokeIndex, state.sandies, state.oyesOrden, state.metidas);
+        const ventajasPartido = calcGolpesVentaja(jugadoresPartido, siEfectivo, "individuales");
+        return calcIndividual(m, scores, ventajasPartido, course.par, siEfectivo, state.sandies, state.oyesOrden, state.metidas);
       })
     : [];
   individualesResults.forEach((r) => {
@@ -1314,7 +1341,7 @@ function calcResumenGeneral(state) {
   let foursomeResults = [];
   if (bets.foursome.enabled) {
     if (formatoFoursome === "cruzado") {
-      const ventajasForusome = calcVentajasForusome(players, course.strokeIndex, bets.foursome.crosses);
+      const ventajasForusome = calcVentajasForusome(players, siEfectivo, bets.foursome.crosses);
       foursomeResults = bets.foursome.crosses.map((c) =>
         calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyesOrden, state.metidas, true)
       );
@@ -1322,7 +1349,7 @@ function calcResumenGeneral(state) {
       // roundRobin o normal: necesitan EXACTAMENTE 4 participantes propios
       const jugadores4 = players.filter((p) => bets.foursome.participantes4.includes(p.id));
       if (jugadores4.length === 4) {
-        const ventajas4 = calcVentajasForusome(jugadores4, course.strokeIndex, bets.foursome.segmentos);
+        const ventajas4 = calcVentajasForusome(jugadores4, siEfectivo, bets.foursome.segmentos);
         const segmentosActivos = formatoFoursome === "normal" ? bets.foursome.segmentos.slice(0, 1) : bets.foursome.segmentos;
         foursomeResults = segmentosActivos.map((seg) =>
           calcForusomeSegmento(seg, scores, ventajas4[seg.id], course.par, state.sandies, state.oyesOrden, state.metidas, true)
@@ -1354,7 +1381,7 @@ function calcResumenGeneral(state) {
   // ventaja se calcula relativa al más bajo de ESE subgrupo, no del grupo
   // completo, para que jugar skins entre 4 no dependa de quién no juega.
   const jugadoresSkins = players.filter((p) => bets.skins.participantes.includes(p.id));
-  const ventajasSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
+  const ventajasSkins = calcGolpesVentaja(jugadoresSkins, siEfectivo, "skins");
   const skinsResult = bets.skins.enabled && jugadoresSkins.length >= 2
     ? calcSkins(jugadoresSkins, scores, ventajasSkins, bets.skins.montoPorHoyo, course.par, state.sandies, oyesGanadorPorHoyo, state.metidas, round.hoyoInicial)
     : { porHoyo: [], totalesPorJugador: Object.fromEntries(players.map((p) => [p.id, 0])), montoPendiente: 0 };
@@ -1365,7 +1392,7 @@ function calcResumenGeneral(state) {
   // Loba (hándicap propio de esta modalidad, además recortado al 80%).
   // Incluye además el cobro por birdie/águila/hoyo en uno/sandy/oyes de
   // cualquiera de los jugadores del equipo.
-  const ventajasLoba = calcGolpesVentaja(players, course.strokeIndex, "loba");
+  const ventajasLoba = calcGolpesVentaja(players, siEfectivo, "loba");
   const lobaResult = bets.loba.enabled
     ? calcLoba(players, scores, ventajasLoba, state.loba, bets.loba.monto, course.par, state.sandies, oyesGanadorPorHoyo, state.metidas, round.hoyoInicial)
     : { detalle: [], balances: Object.fromEntries(players.map((p) => [p.id, 0])) };
@@ -1377,7 +1404,7 @@ function calcResumenGeneral(state) {
   // Solo participan los marcados en bets.stableford.participantes; la
   // ventaja se calcula relativa al más bajo de ESE subgrupo.
   const jugadoresStableford = players.filter((p) => bets.stableford.participantes.includes(p.id));
-  const ventajasStableford = calcGolpesVentaja(jugadoresStableford, course.strokeIndex, "stableford");
+  const ventajasStableford = calcGolpesVentaja(jugadoresStableford, siEfectivo, "stableford");
   const stablefordResult = bets.stableford.enabled && jugadoresStableford.length >= 2
     ? calcStableford(jugadoresStableford, scores, ventajasStableford, course.par, {
         ida: bets.stableford.montoIda,
@@ -1407,7 +1434,7 @@ function calcResumenGeneral(state) {
   });
 
   return {
-    ventajas: calcGolpesVentaja(players, course.strokeIndex, "individuales"), // ventaja del grupo completo, solo informativa
+    ventajas: calcGolpesVentaja(players, siEfectivo, "individuales"), // ventaja del grupo completo, solo informativa
     individualesResults,
     foursomeResults,
     skinsResult,

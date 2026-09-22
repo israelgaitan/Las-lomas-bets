@@ -41,15 +41,8 @@ function renderConfigScreen(state, onChange) {
 
   /* ---- RESPALDO (exportar/importar todo lo guardado) ---- */
   wrap.appendChild(el(`<h2 class="screen-title">Respaldo</h2>`));
-  const respaldoCard = el(`
-    <div class="card">
-      <p class="help-text" style="margin-top:0">Todo lo que metes a mano (jugadores, hándicaps, montos, historial de rondas, amigos) vive solo en este teléfono. Si borras datos de Safari, cambias de teléfono, o algo falla, se pierde para siempre — exporta un respaldo de vez en cuando para no arriesgarte.</p>
-      <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
-      <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
-      <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
-    </div>
-  `);
-  respaldoCard.querySelector('[data-role="exportar"]').addEventListener("click", () => {
+  const rondasSinRespaldo = state.roundsHistory.length - (state.respaldo.rondas || 0);
+  const hazExportar = () => {
     const fecha = new Date().toISOString().slice(0, 10);
     const filename = `las-lomas-bets-respaldo-${fecha}.json`;
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -65,7 +58,31 @@ function renderConfigScreen(state, onChange) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
-  });
+    // marcamos el respaldo como hecho AHORA, con las rondas que tenías en
+    // ese momento — así dejamos de avisar hasta que se acumulen otras 5
+    state.respaldo = { fecha: new Date().toISOString(), rondas: state.roundsHistory.length };
+    onChange(state);
+  };
+  if (rondasSinRespaldo >= 5) {
+    const avisoRespaldo = el(`
+      <div class="card" style="border:1px solid var(--terracota);margin-bottom:10px">
+        <p style="margin:0 0 8px;font-weight:600">Llevas ${rondasSinRespaldo} rondas sin exportar un respaldo</p>
+        <p class="help-text" style="margin:0 0 10px">Todo ese historial vive solo en este teléfono. Exporta ahora para no arriesgarte a perderlo.</p>
+        <button data-role="exportar-aviso" class="btn btn-primary btn-small" style="width:100%">Exportar respaldo ahora</button>
+      </div>
+    `);
+    avisoRespaldo.querySelector('[data-role="exportar-aviso"]').addEventListener("click", hazExportar);
+    wrap.appendChild(avisoRespaldo);
+  }
+  const respaldoCard = el(`
+    <div class="card">
+      <p class="help-text" style="margin-top:0">Todo lo que metes a mano (jugadores, hándicaps, montos, historial de rondas, amigos) vive solo en este teléfono. Si borras datos de Safari, cambias de teléfono, o algo falla, se pierde para siempre — exporta un respaldo de vez en cuando para no arriesgarte.</p>
+      <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
+      <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
+      <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
+    </div>
+  `);
+  respaldoCard.querySelector('[data-role="exportar"]').addEventListener("click", hazExportar);
   const importInput = respaldoCard.querySelector('[data-role="import-file"]');
   respaldoCard.querySelector('[data-role="importar"]').addEventListener("click", () => importInput.click());
   importInput.addEventListener("change", (e) => {
@@ -114,6 +131,13 @@ function renderConfigScreen(state, onChange) {
           <option value="10" ${state.round.hoyoInicial === 10 ? "selected" : ""}>Hoyo 10 (salida por el 10)</option>
         </select>
       </div>
+      <div class="field" style="margin-top:10px">
+        <label>Reparto de ventajas</label>
+        <button data-role="invertir-ventajas" class="btn ${state.round.invertirVentajas ? "btn-primary" : "btn-ghost"} btn-small" style="width:100%">
+          ${state.round.invertirVentajas ? "Invertido (ida ↔ vuelta) — toca para volver a normal" : "Normal (según hándicap real de cada hoyo)"}
+        </button>
+        <p class="help-text" style="margin:6px 0 0">Por default, los golpes de ventaja se reparten según qué tan difícil es cada hoyo, sin importar por dónde arranquen. Si prefieren que el bloque de ida (1-9) y el de vuelta (10-18) se intercambien, actívalo aquí — tú decides cuándo, no cambia solo al elegir el hoyo de salida.</p>
+      </div>
     </div>
   `);
   courseCard.querySelector('[data-role="course-select"]').addEventListener("change", (e) => {
@@ -146,6 +170,10 @@ function renderConfigScreen(state, onChange) {
     if (state.bets.foursome.formato !== "cruzado" && state.bets.foursome.participantes4.length === 4) {
       state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes4, state.bets.foursome.segmentos, nuevo, state.bets.foursome.formato === "roundRobin");
     }
+    onChange(state);
+  });
+  courseCard.querySelector('[data-role="invertir-ventajas"]').addEventListener("click", () => {
+    state.round.invertirVentajas = !state.round.invertirVentajas;
     onChange(state);
   });
   wrap.appendChild(courseCard);
@@ -570,6 +598,7 @@ function renderHoleScreen(state, onChange) {
   const par = course.par[h];
   const si = course.strokeIndex[h];
   const isPar3 = par === 3;
+  const siEfectivo = strokeIndexEfectivo(course.strokeIndex, state.round.invertirVentajas);
 
   // Navegación de hoyo. Si la ronda arranca en el 10, la navegación da la
   // vuelta (del 18 pasa al 1 y del 1 regresa al 18), para poder seguir el
@@ -626,31 +655,6 @@ function renderHoleScreen(state, onChange) {
   }
   wrap.appendChild(progress);
 
-  // Botón para borrar una jugada incompleta/equivocada de este hoyo: pone
-  // los golpes y marcas (unidad, banderas, 3-putt, chupes, oyes, loba) de
-  // TODOS los jugadores en este hoyo de vuelta a "no jugado", sin tocar
-  // ningún otro hoyo. Así el acumulado deja de contarlo, como si nunca se
-  // hubiera capturado. Solo se muestra si ya hay algo capturado en el hoyo.
-  const hoyoTieneDatos = state.players.some((p) => state.scores[p.id][h] !== null);
-  if (hoyoTieneDatos) {
-    const borrarBtn = el(`
-      <button class="btn btn-ghost btn-small" data-act="borrar-hoyo" style="width:100%;margin-bottom:16px">🗑️ Borrar jugada del hoyo ${h + 1}</button>
-    `);
-    borrarBtn.addEventListener("click", () => {
-      const ok = confirm(`¿Borrar la jugada del hoyo ${h + 1}? Se borrarán los golpes y marcas (Unidad, banderas, 3-putt, chupes, oyes, Loba) de este hoyo para los 5 jugadores, y ya no contará en ningún acumulado. Los demás hoyos no se tocan.`);
-      if (!ok) return;
-      state.players.forEach((p) => {
-        state.scores[p.id][h] = null;
-        state.metidas[p.id][h] = false;
-        state.banderas[p.id][h] = { banderas: 0, threePutt: false, chupes: 0 };
-      });
-      if (state.oyesOrden && state.oyesOrden[h]) state.oyesOrden[h] = {};
-      if (state.loba && state.loba[h]) state.loba[h] = { loba: null, companero: null, multiplicador: 1 };
-      onChange(state);
-    });
-    wrap.appendChild(borrarBtn);
-  }
-
   // Ventaja en este hoyo: quién recibe golpe, modalidad por modalidad
   // (cada una puede llevar hándicaps distintos, así que la ventaja no es
   // necesariamente la misma persona en todas). Se guarda por jugador para
@@ -663,7 +667,7 @@ function renderHoleScreen(state, onChange) {
   }
 
   if (state.bets.individuales.enabled) {
-    const vInd = calcGolpesVentaja(state.players, course.strokeIndex, "individuales");
+    const vInd = calcGolpesVentaja(state.players, siEfectivo, "individuales");
     state.players.forEach((p) => {
       if (vInd[p.id][h] > 0) agregarVentaja(p.id, `Ind${vInd[p.id][h] > 1 ? ` +${vInd[p.id][h]}` : ""}`);
     });
@@ -671,7 +675,7 @@ function renderHoleScreen(state, onChange) {
     // automático de arriba — se marcan aparte para no confundir.
     state.bets.individuales.matches.forEach((m) => {
       if (!m.ventajaManual || !m.ventajaManual.jugador || !m.ventajaManual.golpes) return;
-      const golpesManual = repartirGolpesPorDificultad(m.ventajaManual.golpes, course.strokeIndex);
+      const golpesManual = repartirGolpesPorDificultad(m.ventajaManual.golpes, siEfectivo);
       if (golpesManual[h] > 0) {
         const rivalId = m.ventajaManual.jugador === m.a ? m.b : m.a;
         agregarVentaja(m.ventajaManual.jugador, `Ind vs ${playerName(state, rivalId)}${golpesManual[h] > 1 ? ` +${golpesManual[h]}` : ""}`);
@@ -682,7 +686,7 @@ function renderHoleScreen(state, onChange) {
   if (state.bets.foursome.enabled) {
     const formatoF = state.bets.foursome.formato || "cruzado";
     if (formatoF === "cruzado") {
-      const vFs = calcVentajasForusome(state.players, course.strokeIndex, state.bets.foursome.crosses);
+      const vFs = calcVentajasForusome(state.players, siEfectivo, state.bets.foursome.crosses);
       state.bets.foursome.crosses.forEach((cross) => {
         const receptor = [...cross.base, ...cross.rival].find((id) => (vFs[cross.id][id] || [])[h] > 0);
         if (receptor) {
@@ -695,7 +699,7 @@ function renderHoleScreen(state, onChange) {
       const segmentosActivos = formatoF === "normal" ? state.bets.foursome.segmentos.slice(0, 1) : state.bets.foursome.segmentos;
       const segmentoDeEsteHoyo = segmentosActivos.find((seg) => seg.hoyos.includes(h));
       if (segmentoDeEsteHoyo) {
-        const vFs = calcVentajasForusome(jugadores4, course.strokeIndex, [segmentoDeEsteHoyo]);
+        const vFs = calcVentajasForusome(jugadores4, siEfectivo, [segmentoDeEsteHoyo]);
         const receptor = [...segmentoDeEsteHoyo.base, ...segmentoDeEsteHoyo.rival].find((id) => (vFs[segmentoDeEsteHoyo.id][id] || [])[h] > 0);
         if (receptor) {
           const golpes = vFs[segmentoDeEsteHoyo.id][receptor][h];
@@ -707,14 +711,14 @@ function renderHoleScreen(state, onChange) {
 
   if (state.bets.skins.enabled) {
     const jugadoresSkins = state.players.filter((p) => state.bets.skins.participantes.includes(p.id));
-    const vSkins = calcGolpesVentaja(jugadoresSkins, course.strokeIndex, "skins");
+    const vSkins = calcGolpesVentaja(jugadoresSkins, siEfectivo, "skins");
     jugadoresSkins.forEach((p) => {
       if (vSkins[p.id][h] > 0) agregarVentaja(p.id, `Sk${vSkins[p.id][h] > 1 ? ` +${vSkins[p.id][h]}` : ""}`);
     });
   }
 
   if (state.bets.loba.enabled) {
-    const vLoba = calcGolpesVentaja(state.players, course.strokeIndex, "loba");
+    const vLoba = calcGolpesVentaja(state.players, siEfectivo, "loba");
     state.players.forEach((p) => {
       if (vLoba[p.id][h] > 0) agregarVentaja(p.id, `Loba${vLoba[p.id][h] > 1 ? ` +${vLoba[p.id][h]}` : ""}`);
     });
@@ -722,7 +726,7 @@ function renderHoleScreen(state, onChange) {
 
   if (state.bets.stableford.enabled) {
     const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
-    const vSf = calcGolpesVentaja(jugadoresSf, course.strokeIndex, "stableford");
+    const vSf = calcGolpesVentaja(jugadoresSf, siEfectivo, "stableford");
     jugadoresSf.forEach((p) => {
       if (vSf[p.id][h] > 0) agregarVentaja(p.id, `SF${vSf[p.id][h] > 1 ? ` +${vSf[p.id][h]}` : ""}`);
     });

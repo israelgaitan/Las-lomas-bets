@@ -187,6 +187,12 @@ function newState() {
       // sigue siendo el de la cancha, y los montos ida/vuelta siguen
       // ligados a los hoyos 1-9 / 10-18 reales, no al orden de juego.
       hoyoInicial: 1,
+      // false = ventaja repartida según la dificultad real de cada hoyo
+      // (comportamiento de siempre). true = se intercambia el bloque de
+      // ida (1-9) con el de vuelta (10-18) al repartir ventaja. Es una
+      // decisión MANUAL del usuario (botón en Config), no depende de
+      // hoyoInicial ni cambia sola.
+      invertirVentajas: false,
       // fecha en que ARRANCÓ esta ronda (se fija una sola vez, al crear el
       // estado). Se usa para el historial al resetear/guardar la ronda, en
       // vez de usar la fecha en la que se borra — así una ronda que
@@ -205,6 +211,11 @@ function newState() {
     // historial de rondas ya cerradas/guardadas (ver archivarRonda en
     // logic.js): [{ id, fecha, courseName, balanceYo, desglose }]
     roundsHistory: [],
+    // último respaldo exportado (botón "Exportar respaldo" en Config):
+    // fecha ISO y cuántas rondas tenía el historial en ese momento. Sirve
+    // solo para avisar si llevas muchas rondas sin exportar de nuevo — no
+    // afecta ningún cálculo.
+    respaldo: { fecha: null, rondas: 0 },
     players: [
       defaultPlayer(1, "Jugador 1"),
       defaultPlayer(2, "Jugador 2"),
@@ -516,6 +527,9 @@ function migrateState(state) {
   if (!state.round.hoyoInicial) {
     state.round.hoyoInicial = 1;
   }
+  if (state.round.invertirVentajas === undefined) {
+    state.round.invertirVentajas = false;
+  }
   if (!state.round.fechaInicio) {
     // rondas ya en curso de antes de este cambio no tienen forma de saber
     // cuándo empezaron de verdad; usamos ahora como mejor esfuerzo, pero de
@@ -580,6 +594,9 @@ function migrateState(state) {
   }
   if (!state.roundsHistory) {
     state.roundsHistory = [];
+  }
+  if (!state.respaldo) {
+    state.respaldo = { fecha: null, rondas: state.roundsHistory.length };
   }
   // jugadores guardados antes de esta versión no tenían friendId
   state.players.forEach((p) => {

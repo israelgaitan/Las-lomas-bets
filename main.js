@@ -114,6 +114,8 @@
       // conservamos si arrancan por el 1 o por el 10, y abrimos ahí
       fresh.round.hoyoInicial = state.round.hoyoInicial || 1;
       fresh.round.currentHole = fresh.round.hoyoInicial;
+      // conservamos también si el reparto de ventajas está invertido
+      fresh.round.invertirVentajas = state.round.invertirVentajas || false;
       activeTab = "config";
       onChange(fresh);
     });
@@ -130,6 +132,7 @@
     app.appendChild(main);
 
     // Tab bar
+    const rondasSinRespaldo = state.roundsHistory.length - ((state.respaldo && state.respaldo.rondas) || 0);
     const tabs = [
       { id: "hole", icon: "⛳", label: "Hoyo" },
       { id: "bets", icon: "💰", label: "Apuestas" },
@@ -140,7 +143,7 @@
     tabs.forEach((t) => {
       const btn = el(`
         <button class="tab-btn ${activeTab === t.id ? "active" : ""}" data-tab-id="${t.id}">
-          <span class="tab-btn__icon">${t.icon}</span>
+          <span class="tab-btn__icon">${t.icon}${t.id === "config" && rondasSinRespaldo >= 5 ? '<span class="tab-btn__dot"></span>' : ""}</span>
           <span>${t.label}</span>
         </button>
       `);

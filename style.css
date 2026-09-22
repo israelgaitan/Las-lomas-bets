@@ -398,6 +398,18 @@ input:focus-visible {
 
 .tab-btn__icon {
   font-size: 18px;
+  position: relative;
+}
+
+.tab-btn__dot {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rojo-apuesta);
+  border: 1.5px solid var(--verde-campo-oscuro);
 }
 
 /* ---------------- CARDS / SECTIONS GENERAL ---------------- */

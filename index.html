@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Las Lomas Bets</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1F3D2B" />
 <link rel="apple-touch-icon" href="icon-v2.png" />
 <link rel="icon" type="image/png" href="favicon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -18,5 +20,15 @@
 <script src="logic.js"></script>
 <script src="ui.js"></script>
 <script src="main.js"></script>
+<script>
+  // Registra el service worker para que la app funcione sin señal.
+  // Si el navegador no lo soporta (o falla), la app sigue funcionando
+  // normal, solo sin la parte de offline.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch((err) => console.error("No se pudo registrar el service worker:", err));
+    });
+  }
+</script>
 </body>
 </html>
