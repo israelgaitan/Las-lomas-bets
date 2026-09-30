@@ -1289,6 +1289,21 @@ function renderBetsScreen(state, onChange) {
     `);
     formatoCard.querySelector('[data-role="fs-formato"]').addEventListener("change", (e) => {
       state.bets.foursome.formato = e.target.value;
+      // Al cambiar de formato hay que regenerar los segmentos con el
+      // rango de hoyos correcto (18 completos para "normal", 3 bloques
+      // de 6 para "roundRobin") — si no, un segmento que venía de un
+      // formato anterior puede quedarse con un rango de hoyos viejo (ej.
+      // solo 1-6 de un Round Robin) y el dinero deja de moverse desde el
+      // hoyo 7 en adelante sin avisar. generarSegmentosRotacion conserva
+      // las parejas y montos ya elegidos si siguen siendo válidos.
+      if (state.bets.foursome.participantes4.length === 4) {
+        state.bets.foursome.segmentos = generarSegmentosRotacion(
+          state.bets.foursome.participantes4,
+          state.bets.foursome.segmentos,
+          state.round.hoyoInicial,
+          state.bets.foursome.formato === "roundRobin"
+        );
+      }
       onChange(state);
     });
     wrap.appendChild(formatoCard);
