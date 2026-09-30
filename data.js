@@ -545,6 +545,19 @@ function migrateState(state) {
       state.bets.foursome.formato !== "normal"
     );
   }
+  // formato "normal" ahora guarda montoIda/montoVuelta (antes era un solo
+  // monto plano para los 18 hoyos) — si el segmento guardado todavía no
+  // los trae, lo regeneramos UNA vez para agregarlos, heredando el monto
+  // viejo como punto de partida en ambos (ida y vuelta quedan iguales
+  // hasta que el usuario decida separarlos).
+  if (state.bets.foursome.formato === "normal" && state.bets.foursome.segmentos[0] && state.bets.foursome.segmentos[0].montoIda === undefined) {
+    state.bets.foursome.segmentos = generarSegmentosRotacion(
+      state.bets.foursome.participantes4.slice(0, 4),
+      state.bets.foursome.segmentos,
+      state.round.hoyoInicial,
+      false
+    );
+  }
   if (!state.banderas) {
     state.banderas = {};
     state.players.forEach((p) => (state.banderas[p.id] = emptyBanderasFlags()));

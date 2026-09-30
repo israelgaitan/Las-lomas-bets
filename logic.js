@@ -249,20 +249,27 @@ function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial, r
   for (let i = 0; i < 18; i++) ordenJuego.push((inicio + i) % 18);
 
   if (rotar === false) {
-    // pareja fija para los 18 hoyos completos
+    // pareja fija para los 18 hoyos completos, con monto que puede ser
+    // distinto en ida (hoyos 1-9 de SU orden de juego) y vuelta (10-18)
     const viejo = (segmentosViejos || [])[0];
     const parejaValida =
       viejo &&
       viejo.base && viejo.rival &&
       [...viejo.base, ...viejo.rival].length === 4 &&
       [...viejo.base, ...viejo.rival].every((id2) => participantes.includes(id2));
+    // si venimos de un segmento viejo de Round Robin (monto plano) o sin
+    // nada guardado, arrancamos ida=vuelta=ese monto (o 0); si ya traía
+    // montoIda/montoVuelta de una "normal" anterior, se conservan tal cual
+    const montoBase = viejo ? (viejo.montoIda !== undefined ? viejo.montoIda : viejo.monto || 0) : 0;
+    const montoVueltaBase = viejo ? (viejo.montoVuelta !== undefined ? viejo.montoVuelta : viejo.monto || 0) : 0;
     return [
       {
         id: "S1",
         hoyos: ordenJuego,
         base: parejaValida ? [...viejo.base] : [a, b],
         rival: parejaValida ? [...viejo.rival] : [c, d],
-        monto: viejo ? viejo.monto : 0,
+        montoIda: montoBase,
+        montoVuelta: montoVueltaBase,
       },
     ];
   }
@@ -295,14 +302,19 @@ function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial, r
 }
 
 /**
- * Como calcForusomeCross, pero para UN SEGMENTO de 6 hoyos dentro de un
- * foursome con cambio de pareja: solo cuenta los hoyos [desde, hasta) del
- * segmento, con un monto plano por hoyo (no ida/vuelta, porque los
- * segmentos no respetan el corte de 9 hoyos).
+ * Como calcForusomeCross, pero para UN SEGMENTO dentro de un foursome de
+ * 4 jugadores (formato "normal" o "roundRobin"). El monto por hoyo puede
+ * ser plano (segmento.monto, un solo valor para todo el segmento — así
+ * son los bloques de 6 hoyos del Round Robin) o, si el segmento trae
+ * montoIda/montoVuelta definidos (formato "normal", que cubre los 18
+ * hoyos en un solo segmento), cambia de monto exactamente en el hoyo 9
+ * de SU PROPIO orden de juego (no por número de hoyo físico), igual que
+ * ya hace el resto de la app con hoyoInicial=10.
  */
 function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, oyesOrden, metidas, contarEventos) {
   const holeResults = [];
   let saldoTotal = 0;
+  const usaIdaVuelta = segmento.montoIda !== undefined && segmento.montoVuelta !== undefined;
 
   for (let h = 0; h < 18; h++) {
     if (!segmento.hoyos.includes(h)) {
@@ -326,7 +338,9 @@ function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, 
     if (base.alta < rival.alta) resultAlta = "base";
     else if (base.alta > rival.alta) resultAlta = "rival";
 
-    const montoHoyo = segmento.monto;
+    const montoHoyo = usaIdaVuelta
+      ? (segmento.hoyos.indexOf(h) < 9 ? segmento.montoIda : segmento.montoVuelta)
+      : segmento.monto;
 
     const eventosBase = contarEventos
       ? segmento.base.reduce(

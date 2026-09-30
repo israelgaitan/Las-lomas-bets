@@ -1522,24 +1522,58 @@ function renderBetsScreen(state, onChange) {
       const baseNames = r.base.map((id) => playerName(state, id)).join(" + ");
       const rivalNames = r.rival.map((id) => playerName(state, id)).join(" + ");
       const seg = state.bets.foursome.segmentos.find((s) => s.id === r.crossId);
+      const esNormal = state.bets.foursome.formato === "normal";
       const card = el(`
         <div class="card">
           <p class="card__title">${rangoHoyosSeg(seg)}: ${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
+          ${esNormal ? `
+          <div class="field-row">
+            <div class="field">
+              <label>$/hoyo, hoyos 1-9</label>
+              <input type="number" value="${seg.montoIda}" data-role="monto-ida" />
+            </div>
+            <div class="field">
+              <label>$/hoyo, hoyos 10-18</label>
+              <input type="number" value="${seg.montoVuelta}" data-role="monto-vuelta" />
+            </div>
+          </div>
+          <p class="help-text" style="margin-top:-6px">"1-9" y "10-18" son según el orden real en que los juegan, no el número físico del hoyo.</p>
+          ` : `
           <div class="field">
             <label>$ por hoyo</label>
             <input type="number" value="${seg.monto}" data-role="monto" />
           </div>
+          `}
           <div class="match-row" style="border-top:1px solid var(--linea);padding-top:10px">
             <span class="match-row__names">Saldo del segmento</span>
             <span class="match-row__amount ${moneyClass(r.saldoTotal)}">${fmtMoney(Math.abs(r.saldoTotal))} ${r.saldoTotal === 0 ? "" : (r.saldoTotal > 0 ? "a favor de " + baseNames : "a favor de " + rivalNames)}</span>
           </div>
         </div>
       `);
-      card.querySelector('[data-role="monto"]').addEventListener("input", (e) => {
-        seg.monto = parseFloat(e.target.value) || 0;
-        onChange(state, { skipRender: true });
-      });
-      card.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
+      const montoIdaInput = card.querySelector('[data-role="monto-ida"]');
+      if (montoIdaInput) {
+        montoIdaInput.addEventListener("input", (e) => {
+          seg.montoIda = parseFloat(e.target.value) || 0;
+          onChange(state, { skipRender: true });
+        });
+        montoIdaInput.addEventListener("change", () => onChange(state));
+      }
+      const montoVueltaInput = card.querySelector('[data-role="monto-vuelta"]');
+      if (montoVueltaInput) {
+        montoVueltaInput.addEventListener("input", (e) => {
+          seg.montoVuelta = parseFloat(e.target.value) || 0;
+          onChange(state, { skipRender: true });
+        });
+        montoVueltaInput.addEventListener("change", () => onChange(state));
+      }
+      const montoInput = card.querySelector('[data-role="monto"]');
+      if (montoInput) {
+        montoInput.addEventListener("input", (e) => {
+          seg.monto = parseFloat(e.target.value) || 0;
+          onChange(state, { skipRender: true });
+        });
+        montoInput.addEventListener("change", () => onChange(state));
+      }
       wrap.appendChild(card);
     });
   }
