@@ -2125,6 +2125,294 @@ function renderSummaryScreen(state, onChange) {
   wrap.appendChild(scrollWrap);
   wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.${state.bets.stableford.enabled ? " La fila \"pts\" son los puntos Stableford de cada hoyo." : ""}</p>`));
 
+  /* ---- HOYO POR HOYO (para no tener que regresarte a Hoyo y darle
+     "desglosar" cada vez que quieras ver cómo va cada apuesta) ---- */
+  wrap.appendChild(el(`<p class="section-divider">Hoyo por hoyo</p>`));
+
+  /* -- Individuales -- */
+  if (state.bets.individuales.enabled && resumen.individualesResults.length > 0) {
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">Individuales</p>`));
+    resumen.individualesResults.forEach((r) => {
+      const nombreA = playerName(state, r.a);
+      const nombreB = playerName(state, r.b);
+      const esMatchPlay = r.modo === "matchPlay";
+      const esDoblado = !esMatchPlay && r.montoIda !== r.montoVuelta;
+      const jugados = r.holeResults.filter((hr) => hr.jugado);
+      const card = el(`<div class="card" style="margin-bottom:10px"><p class="card__title" style="margin-bottom:8px">${nombreA}<span style="opacity:0.5;font-size:19px"> vs </span>${nombreB}</p></div>`);
+      if (jugados.length === 0) {
+        card.appendChild(el(`<p class="help-text" style="margin:0">Todavía no hay hoyos jugados.</p>`));
+        wrap.appendChild(card);
+        return;
+      }
+      const rows = el(`<div></div>`);
+      let acumUnidades = 0, acumDinero = 0, hoyosA = 0, hoyosB = 0;
+      let enIda = true;
+      let idaUnidades = 0, idaDinero = 0, vueltaUnidades = 0, vueltaDinero = 0;
+      jugados.forEach((hr) => {
+        if (hr.ganadorHoyo === r.a) hoyosA++;
+        else if (hr.ganadorHoyo === r.b) hoyosB++;
+        if (!esMatchPlay && enIda && hr.hole > 9) {
+          rows.appendChild(el(`
+            <div class="match-row" style="padding:6px 0;border-top:1px dashed var(--linea);opacity:0.75">
+              <span class="match-row__names" style="font-size:17px">Subtotal ida (hoyo 9)</span>
+              <span class="match-row__amount ${moneyClass(idaDinero)}" style="font-size:17px">${idaUnidades > 0 ? "+" : ""}${idaUnidades}u · ${fmtMoney(idaDinero)}</span>
+            </div>
+          `));
+          enIda = false;
+        }
+        acumUnidades += hr.diffUnidades;
+        const favorTexto = hr.diffUnidades === 0 ? "empate" : (hr.diffUnidades > 0 ? nombreA : nombreB);
+        if (esMatchPlay) {
+          rows.appendChild(el(`
+            <div class="match-row" style="padding:5px 0">
+              <span class="match-row__names" style="font-size:18px">Hoyo ${hr.hole} — ${favorTexto}</span>
+              <span class="match-row__amount" style="font-size:18px;font-weight:600;opacity:0.75">${hoyosA}-${hoyosB}</span>
+            </div>
+          `));
+        } else {
+          const dineroHoyo = hr.diffUnidades * hr.montoHoyo;
+          acumDinero += dineroHoyo;
+          if (hr.hole <= 9) { idaUnidades += hr.diffUnidades; idaDinero += dineroHoyo; }
+          else { vueltaUnidades += hr.diffUnidades; vueltaDinero += dineroHoyo; }
+          rows.appendChild(el(`
+            <div class="match-row" style="padding:5px 0">
+              <span class="match-row__names" style="font-size:18px">Hoyo ${hr.hole} — ${favorTexto}${hr.diffUnidades !== 0 ? ` (${hr.diffUnidades > 0 ? "+" : ""}${hr.diffUnidades}u)` : ""}</span>
+              <span class="match-row__amount ${moneyClass(acumDinero)}" style="font-size:18px;font-weight:600">${acumUnidades > 0 ? "+" : ""}${acumUnidades}u · ${fmtMoney(acumDinero)}</span>
+            </div>
+          `));
+        }
+      });
+      if (esMatchPlay) {
+        rows.appendChild(el(`<p class="help-text" style="margin:8px 0 0">Match play: se paga un monto fijo ($${r.montoMatch || 0}) a quien se lleve más hoyos, no importa el margen.</p>`));
+      } else {
+        if (!enIda) {
+          rows.appendChild(el(`
+            <div class="match-row" style="padding:6px 0;border-top:1px dashed var(--linea);opacity:0.75">
+              <span class="match-row__names" style="font-size:17px">Subtotal vuelta (hoyo 18)</span>
+              <span class="match-row__amount ${moneyClass(vueltaDinero)}" style="font-size:17px">${vueltaUnidades > 0 ? "+" : ""}${vueltaUnidades}u · ${fmtMoney(vueltaDinero)}</span>
+            </div>
+          `));
+        }
+        if (esDoblado) {
+          const resumenDoblado = el(`<div style="margin-bottom:8px"></div>`);
+          [["Ida", idaUnidades, idaDinero], ["Vuelta", vueltaUnidades, vueltaDinero]].forEach(([lbl, u, d]) => {
+            const ganaTexto = u === 0 ? "empate, no se cobra" : `gana ${u > 0 ? nombreA : nombreB} ${fmtMoney(Math.abs(d))}`;
+            resumenDoblado.appendChild(el(`
+              <div class="match-row" style="padding:4px 0">
+                <span class="match-row__names" style="font-size:17px;opacity:0.85">${lbl} (sencilla, doblada)</span>
+                <span class="match-row__amount" style="font-size:17px;font-weight:600">${ganaTexto}</span>
+              </div>
+            `));
+          });
+          card.appendChild(resumenDoblado);
+        }
+      }
+      card.appendChild(rows);
+      wrap.appendChild(card);
+    });
+  }
+
+  /* -- Foursome -- */
+  if (state.bets.foursome.enabled && resumen.foursomeResults.length > 0) {
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">Foursome</p>`));
+    resumen.foursomeResults.forEach((r) => {
+      const baseNames = r.base.map((id) => playerName(state, id)).join(" + ");
+      const rivalNames = r.rival.map((id) => playerName(state, id)).join(" + ");
+      const esNormal = state.bets.foursome.formato === "normal";
+      // "ida"/"vuelta" para efectos de este corte: en cruzado y normal
+      // es por los primeros/últimos 9 hoyos de SU propio orden de juego
+      // (ya resuelto en montoHoyo); usamos el mismo criterio que ya usó
+      // el cálculo para saber dónde poner el separador visual.
+      const seg = esNormal
+        ? state.bets.foursome.segmentos.find((s) => s.id === r.crossId)
+        : state.bets.foursome.formato === "roundRobin"
+        ? state.bets.foursome.segmentos.find((s) => s.id === r.crossId)
+        : state.bets.foursome.crosses.find((c) => c.id === r.crossId);
+      const esIdaHoyo = (h) => (seg && seg.hoyos ? seg.hoyos.indexOf(h) < 9 && seg.hoyos.indexOf(h) !== -1 : h < 9);
+      // "doblado" = ida y vuelta tienen montos distintos (no aplica a
+      // Round Robin, que no se divide en ida/vuelta sino en bloques de 6).
+      const montoIdaSeg = seg ? (seg.montoIda !== undefined ? seg.montoIda : seg.monto) : null;
+      const montoVueltaSeg = seg ? (seg.montoVuelta !== undefined ? seg.montoVuelta : seg.monto) : null;
+      const esDoblado = state.bets.foursome.formato !== "roundRobin" && montoIdaSeg !== null && montoIdaSeg !== montoVueltaSeg;
+
+      const jugados = r.holeResults.filter((hr) => hr.jugado);
+      const card = el(`
+        <div class="card" style="margin-bottom:10px">
+          <p class="card__title" style="margin-bottom:8px">${baseNames}<span style="opacity:0.5;font-size:19px"> vs </span>${rivalNames}</p>
+        </div>
+      `);
+      if (jugados.length === 0) {
+        card.appendChild(el(`<p class="help-text" style="margin:0">Todavía no hay hoyos jugados en este cruce.</p>`));
+        wrap.appendChild(card);
+        return;
+      }
+      const rows = el(`<div></div>`);
+      let acumUnidades = 0;
+      let acumDinero = 0;
+      let enIda = true;
+      let idaUnidades = 0, idaDinero = 0;
+      let vueltaUnidades = 0, vueltaDinero = 0;
+      jugados.forEach((hr) => {
+        const h = hr.hole - 1;
+        if (enIda && !esIdaHoyo(h)) {
+          // cambiamos a vuelta: ponemos el corte con el subtotal de ida
+          rows.appendChild(el(`
+            <div class="match-row" style="padding:6px 0;border-top:1px dashed var(--linea);opacity:0.75">
+              <span class="match-row__names" style="font-size:17px">Subtotal ida (hoyo 9)</span>
+              <span class="match-row__amount ${moneyClass(idaDinero)}" style="font-size:17px">${idaUnidades > 0 ? "+" : ""}${idaUnidades}u · ${fmtMoney(idaDinero)}</span>
+            </div>
+          `));
+          enIda = false;
+        }
+        acumUnidades += hr.diffUnidades;
+        acumDinero += hr.diffUnidades * hr.montoHoyo;
+        if (esIdaHoyo(h)) { idaUnidades += hr.diffUnidades; idaDinero += hr.diffUnidades * hr.montoHoyo; }
+        else { vueltaUnidades += hr.diffUnidades; vueltaDinero += hr.diffUnidades * hr.montoHoyo; }
+        const favorTexto = hr.diffUnidades === 0 ? "empate" : (hr.diffUnidades > 0 ? baseNames : rivalNames);
+        rows.appendChild(el(`
+          <div class="match-row" style="padding:5px 0">
+            <span class="match-row__names" style="font-size:18px">Hoyo ${hr.hole} — ${favorTexto}${hr.diffUnidades !== 0 ? ` (${hr.diffUnidades > 0 ? "+" : ""}${hr.diffUnidades}u)` : ""}</span>
+            <span class="match-row__amount ${moneyClass(acumDinero)}" style="font-size:18px;font-weight:600">${acumUnidades > 0 ? "+" : ""}${acumUnidades}u · ${fmtMoney(acumDinero)}</span>
+          </div>
+        `));
+      });
+      // subtotal de vuelta al final (solo si ya se jugó algún hoyo de vuelta)
+      if (!enIda) {
+        rows.appendChild(el(`
+          <div class="match-row" style="padding:6px 0;border-top:1px dashed var(--linea);opacity:0.75">
+            <span class="match-row__names" style="font-size:17px">Subtotal vuelta (hoyo 18)</span>
+            <span class="match-row__amount ${moneyClass(vueltaDinero)}" style="font-size:17px">${vueltaUnidades > 0 ? "+" : ""}${vueltaUnidades}u · ${fmtMoney(vueltaDinero)}</span>
+          </div>
+        `));
+      }
+      // si está doblado (ida y vuelta con monto distinto), se tratan como
+      // 2 apuestas sencillas separadas: quién gana cada una y cuánto
+      if (esDoblado) {
+        const resumenDoblado = el(`<div style="margin-bottom:8px"></div>`);
+        [["Ida", idaUnidades, idaDinero], ["Vuelta", vueltaUnidades, vueltaDinero]].forEach(([lbl, u, d]) => {
+          const ganaTexto = u === 0 ? "empate, no se cobra" : `gana ${u > 0 ? baseNames : rivalNames} ${fmtMoney(Math.abs(d))}`;
+          resumenDoblado.appendChild(el(`
+            <div class="match-row" style="padding:4px 0">
+              <span class="match-row__names" style="font-size:17px;opacity:0.85">${lbl} (sencilla, doblada)</span>
+              <span class="match-row__amount" style="font-size:17px;font-weight:600">${ganaTexto}</span>
+            </div>
+          `));
+        });
+        card.appendChild(resumenDoblado);
+      }
+      card.appendChild(rows);
+      wrap.appendChild(card);
+    });
+  }
+
+  /* -- Skins -- */
+  if (state.bets.skins.enabled) {
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">Skins</p>`));
+    const jugadosSkins = resumen.skinsResult.porHoyo.filter((e) => e && e.jugado);
+    const card = el(`<div class="card"></div>`);
+    if (jugadosSkins.length === 0) {
+      card.appendChild(el(`<p class="help-text" style="margin:0">Todavía no hay hoyos jugados.</p>`));
+    } else {
+      const acumulado = {};
+      state.players.forEach((p) => (acumulado[p.id] = 0));
+      jugadosSkins.forEach((e) => {
+        let linea;
+        if (e.acumulaSiguiente) {
+          linea = `Hoyo ${e.hole} — empate de 3+, se acumula $${e.montoVigente} al siguiente`;
+        } else {
+          const ids = e.ganadores;
+          ids.forEach((id) => (acumulado[id] += e.montoCadaGanador));
+          state.players.forEach((p) => {
+            if (!ids.includes(p.id)) acumulado[p.id] -= e.montoVigente;
+          });
+          const nombres = ids.map((id) => playerName(state, id)).join(" y ");
+          linea = `Hoyo ${e.hole} — gana ${nombres} ${fmtMoney(e.montoCadaGanador)} c/u`;
+        }
+        if (e.eventosHoyo) {
+          e.eventosHoyo.forEach((ev) => {
+            linea += ` · +evento ${playerName(state, ev.playerId)}`;
+          });
+        }
+        card.appendChild(el(`
+          <div class="match-row" style="padding:5px 0">
+            <span class="match-row__names" style="font-size:18px">${linea}</span>
+          </div>
+        `));
+      });
+      card.appendChild(el(`<p class="help-text" style="margin:8px 0 0">Acumulado ahorita: ${state.players.map((p) => `${p.name} ${fmtMoney(acumulado[p.id])}`).join(" · ")}</p>`));
+    }
+    wrap.appendChild(card);
+  }
+
+  /* -- Loba -- */
+  if (state.bets.loba.enabled) {
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">Loba</p>`));
+    const jugadosLoba = resumen.lobaResult.detalle.filter((e) => e.configurado && e.jugado);
+    const card = el(`<div class="card"></div>`);
+    if (jugadosLoba.length === 0) {
+      card.appendChild(el(`<p class="help-text" style="margin:0">Todavía no hay hoyos de Loba jugados.</p>`));
+    } else {
+      jugadosLoba.forEach((e) => {
+        const parejaNombres = e.pareja.map((id) => playerName(state, id)).join(" + ");
+        const trioNombres = e.trio.map((id) => playerName(state, id)).join(" + ");
+        const ganadorTexto = e.ganador === "pareja" ? parejaNombres : e.ganador === "trio" ? trioNombres : "empate de golpe";
+        const linea = `Hoyo ${e.hole} (${parejaNombres} vs ${trioNombres}) — ${ganadorTexto}${e.totalBote !== 0 ? ` · bote ${fmtMoney(Math.abs(e.totalBote))}` : ""}`;
+        card.appendChild(el(`
+          <div class="match-row" style="padding:5px 0">
+            <span class="match-row__names" style="font-size:17px">${linea}</span>
+          </div>
+        `));
+      });
+    }
+    wrap.appendChild(card);
+  }
+
+  /* -- Banderas / 3-putt / Chupes (listas de eventos, no se juega cada hoyo) -- */
+  const eventoTipos = [
+    { key: "banderas", label: "Banderas", result: resumen.banderasResult },
+    { key: "threePutt", label: "3-putt", result: resumen.threePuttResult },
+    { key: "chupes", label: "Chupes", result: resumen.chupesResult },
+  ];
+  eventoTipos.forEach(({ key, label, result }) => {
+    if (!state.bets[key].enabled) return;
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">${label}</p>`));
+    const card = el(`<div class="card"></div>`);
+    if (result.detalle.length === 0) {
+      card.appendChild(el(`<p class="help-text" style="margin:0">Todavía no ha pasado nada aquí.</p>`));
+    } else {
+      result.detalle.forEach((ev) => {
+        card.appendChild(el(`
+          <div class="match-row" style="padding:5px 0">
+            <span class="match-row__names" style="font-size:18px">Hoyo ${ev.hole} — ${playerName(state, ev.playerId)}${ev.cantidad > 1 ? ` x${ev.cantidad}` : ""}</span>
+            <span class="match-row__amount" style="font-size:18px;font-weight:600;opacity:0.75">${fmtMoney(ev.monto)}</span>
+          </div>
+        `));
+      });
+    }
+    wrap.appendChild(card);
+  });
+
+  /* -- Stableford: los puntos por hoyo ya se ven en la fila "pts" de la
+     tarjeta de golf arriba; aquí solo recordamos cómo van los 3 premios -- */
+  if (state.bets.stableford.enabled) {
+    wrap.appendChild(el(`<p style="font-weight:700;font-size:19px;margin:14px 0 8px;opacity:0.85">Stableford</p>`));
+    const card = el(`<div class="card"></div>`);
+    card.appendChild(el(`<p class="help-text" style="margin:0 0 8px">Los puntos de cada hoyo están en la fila "pts" de la tarjeta de golf, arriba. Aquí solo el estado de los 3 premios:</p>`));
+    [["ida", "Ida (1-9)"], ["vuelta", "Vuelta (10-18)"], ["total", "Total (18)"]].forEach(([k, lbl]) => {
+      const premio = resumen.stablefordResult.premios[k];
+      const texto = !premio || !premio.decidido
+        ? "aún no se decide (falta que todos completen ese tramo)"
+        : `gana ${premio.ganadores.map((id) => playerName(state, id)).join(" y ")} ${fmtMoney(premio.montoCadaGanador || 0)} c/u`;
+      card.appendChild(el(`
+        <div class="match-row" style="padding:5px 0">
+          <span class="match-row__names" style="font-size:18px">${lbl}</span>
+          <span class="match-row__amount" style="font-size:17px;opacity:0.75;text-align:right">${texto}</span>
+        </div>
+      `));
+    });
+    wrap.appendChild(card);
+  }
+
   wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
   const sorted = [...state.players].sort(
