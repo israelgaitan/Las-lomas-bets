@@ -2121,9 +2121,102 @@ function renderSummaryScreen(state, onChange) {
     }
   });
 
+  // Filas extra en la MISMA tarjeta: Foursome y Skins, hoyo por hoyo,
+  // igual de compactas que la fila "pts" de arriba — para verlo junto a
+  // los golpes sin tener que bajar a otra tarjeta.
+  const extraCellStyle = cellStyle + ";font-weight:700";
+  const signo = (v) => (v > 0 ? "+" : "") + v;
+  const colorVal = (v) => (v === null ? "opacity:0.3" : v > 0 ? "color:#7ee787" : v < 0 ? "color:#ff7b72" : "color:var(--crema)");
+  // Fila genérica: valores por hoyo (null = no jugado) con subtotal OUT/IN/TOT
+  const agregarFilaUnidades = (etiqueta, valoresPorHoyo) => {
+    const fila = el(`<tr style="border-top:1px solid var(--linea)"></tr>`);
+    fila.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600;font-size:11px">${etiqueta}</td>`));
+    let out = 0, outJug = 0, inn = 0, inJug = 0;
+    for (let h = 0; h < 18; h++) {
+      const val = valoresPorHoyo[h];
+      fila.appendChild(el(`<td style="${cellStyle};${colorVal(val)}">${val !== null ? signo(val) : "—"}</td>`));
+      if (val !== null) { if (h < 9) { out += val; outJug++; } else { inn += val; inJug++; } }
+      if (h === 8) fila.appendChild(el(`<td style="${extraCellStyle}">${outJug > 0 ? signo(out) : "—"}</td>`));
+    }
+    fila.appendChild(el(`<td style="${extraCellStyle}">${inJug > 0 ? signo(inn) : "—"}</td>`));
+    fila.appendChild(el(`<td style="${extraCellStyle}">${(outJug + inJug) > 0 ? signo(out + inn) : "—"}</td>`));
+    table.appendChild(fila);
+  };
+
+  // Individuales: una fila por partido, unidades de cada hoyo desde el
+  // punto de vista del primer jugador (en match play: +1/-1 por hoyo ganado)
+  if (state.bets.individuales.enabled) {
+    resumen.individualesResults.forEach((r) => {
+      const esMatchPlay = r.modo === "matchPlay";
+      const valores = [];
+      for (let h = 0; h < 18; h++) {
+        const hr = r.holeResults[h];
+        if (!hr || !hr.jugado) { valores.push(null); continue; }
+        if (esMatchPlay) valores.push(hr.ganadorHoyo === r.a ? 1 : hr.ganadorHoyo === r.b ? -1 : 0);
+        else valores.push(hr.diffUnidades);
+      }
+      agregarFilaUnidades(`${playerName(state, r.a)} vs ${playerName(state, r.b)}`, valores);
+    });
+  }
+  if (state.bets.foursome.enabled) {
+    resumen.foursomeResults.forEach((r) => {
+      const baseIniciales = r.base.map((id) => playerName(state, id)).join("+");
+      const rivalIniciales = r.rival.map((id) => playerName(state, id)).join("+");
+      const filaFs = el(`<tr style="border-top:1px solid var(--linea)"></tr>`);
+      filaFs.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600;font-size:11px">${baseIniciales} vs ${rivalIniciales}</td>`));
+      let out = 0, outJug = 0, inn = 0, inJug = 0;
+      for (let h = 0; h < 18; h++) {
+        const hr = r.holeResults[h];
+        const val = hr && hr.jugado ? hr.diffUnidades : null;
+        const color = val === null ? "opacity:0.3" : val > 0 ? "color:#7ee787" : val < 0 ? "color:#ff7b72" : "color:var(--crema)";
+        filaFs.appendChild(el(`<td style="${cellStyle};${color}">${val !== null ? (val > 0 ? "+" : "") + val : "—"}</td>`));
+        if (val !== null) { if (h < 9) { out += val; outJug++; } else { inn += val; inJug++; } }
+        if (h === 8) filaFs.appendChild(el(`<td style="${extraCellStyle}">${outJug > 0 ? (out > 0 ? "+" : "") + out : "—"}</td>`));
+      }
+      filaFs.appendChild(el(`<td style="${extraCellStyle}">${inJug > 0 ? (inn > 0 ? "+" : "") + inn : "—"}</td>`));
+      filaFs.appendChild(el(`<td style="${extraCellStyle}">${(outJug + inJug) > 0 ? (out + inn > 0 ? "+" : "") + (out + inn) : "—"}</td>`));
+      table.appendChild(filaFs);
+    });
+  }
+  if (state.bets.skins.enabled) {
+    const filaSk = el(`<tr style="border-top:1px solid var(--linea)"></tr>`);
+    filaSk.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600">Skins</td>`));
+    let out = 0, inn = 0;
+    for (let h = 0; h < 18; h++) {
+      const e = resumen.skinsResult.porHoyo[h];
+      let texto = "—";
+      let color = "opacity:0.3";
+      if (e && e.jugado) {
+        if (e.acumulaSiguiente) {
+          texto = "acum";
+          color = "opacity:0.5;font-size:10px";
+        } else {
+          texto = `+${Math.round(e.montoCadaGanador)}`;
+          color = "color:#7ee787";
+          if (h < 9) out += e.montoCadaGanador; else inn += e.montoCadaGanador;
+        }
+      }
+      filaSk.appendChild(el(`<td style="${cellStyle};${color}">${texto}</td>`));
+      if (h === 8) filaSk.appendChild(el(`<td style="${extraCellStyle}">${out > 0 ? "+" + Math.round(out) : "—"}</td>`));
+    }
+    filaSk.appendChild(el(`<td style="${extraCellStyle}">${inn > 0 ? "+" + Math.round(inn) : "—"}</td>`));
+    filaSk.appendChild(el(`<td style="${extraCellStyle}">${(out + inn) > 0 ? "+" + Math.round(out + inn) : "—"}</td>`));
+    table.appendChild(filaSk);
+  }
+
+  // Loba: por hoyo, unidades de la pareja menos las del trío (+ = gana la
+  // pareja de la loba, - = gana el trío). "acum" si empataron el golpe.
+  if (state.bets.loba.enabled) {
+    const valores = new Array(18).fill(null);
+    resumen.lobaResult.detalle.forEach((e) => {
+      if (e.configurado && e.jugado) valores[e.hole - 1] = e.unidadesPareja - e.unidadesTrio;
+    });
+    agregarFilaUnidades("Loba (pareja)", valores);
+  }
+
   scrollWrap.appendChild(table);
   wrap.appendChild(scrollWrap);
-  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.${state.bets.stableford.enabled ? " La fila \"pts\" son los puntos Stableford de cada hoyo." : ""}</p>`));
+  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.${state.bets.stableford.enabled ? " La fila \"pts\" son los puntos Stableford de cada hoyo." : ""}${state.bets.foursome.enabled ? " La fila de Foursome son las unidades que se ganan/pierden ese hoyo." : ""}${state.bets.skins.enabled ? " La fila de Skins es lo que cobra el ganador de ese hoyo (\"acum\" = empate de 3+, se acumula)." : ""}</p>`));
 
   /* ---- HOYO POR HOYO (para no tener que regresarte a Hoyo y darle
      "desglosar" cada vez que quieras ver cómo va cada apuesta) ---- */
