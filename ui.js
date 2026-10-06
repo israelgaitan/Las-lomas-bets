@@ -35,12 +35,412 @@ function el(html) {
    PANTALLA: CONFIGURAR RONDA
    ============================================================ */
 
-function renderConfigScreen(state, onChange) {
+/* ============================================================
+   PANTALLA: NUEVA RONDA (3 pasos: dónde, quién, qué se juega)
+   ============================================================ */
+
+const HCP_MODALIDADES = [
+  { key: "individuales", label: "Indiv." },
+  { key: "foursome", label: "Foursome" },
+  { key: "skins", label: "Skins" },
+  { key: "loba", label: "Loba" },
+  { key: "stableford", label: "Stableford" },
+];
+
+// En qué paso va el usuario y qué escribió en el buscador. Vive aquí (no en
+// el state guardado) porque solo importa mientras tiene la pantalla abierta.
+let pasoNuevaRonda = 1;
+let busquedaAmigo = "";
+const hcpDetalleAbierto = new Set(); // ids de jugador con "por modalidad" abierto
+
+function reiniciarPasosNuevaRonda() {
+  pasoNuevaRonda = 1;
+  busquedaAmigo = "";
+  hcpDetalleAbierto.clear();
+}
+
+// Pone a un amigo en el primer lugar libre de la ronda, con su hándicap
+// guardado. Regresa false si ya están los 5 lugares ocupados.
+function elegirAmigoHoy(state, f) {
+  const slotLibre = state.players.find((p) => !p.friendId);
+  if (!slotLibre) return false;
+  slotLibre.name = f.name;
+  slotLibre.friendId = f.id;
+  slotLibre.hcp = { ...f.hcp };
+  // si este amigo es "tú" (⭐), este lugar pasa a ser "quién soy yo" para
+  // el historial — así el historial y "cuánto le he ganado a cada quien"
+  // se calculan de la persona correcta.
+  if (f.esYo) state.miPlayerId = slotLibre.id;
+  return true;
+}
+
+// Libera el lugar que tenía este amigo y lo regresa a placeholder.
+function quitarAmigoHoy(state, friendId) {
+  const slot = state.players.find((p) => p.friendId === friendId);
+  if (!slot) return;
+  slot.name = `Jugador ${slot.id}`;
+  slot.friendId = null;
+  hcpDetalleAbierto.delete(slot.id);
+}
+
+// Cambia el hándicap del jugador de hoy y lo guarda también en su amigo,
+// para que la próxima ronda ya salga con el número nuevo.
+function guardarHcpEnAmigo(state, p) {
+  const friend = state.friends.find((f) => f.id === p.friendId);
+  if (friend) friend.hcp = { ...p.hcp };
+}
+
+function fmtHcp(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function renderNuevaRondaScreen(state, onChange, irA) {
+  const wrap = el(`<div class="wiz"></div>`);
+  const paso = pasoNuevaRonda;
+
+  wrap.appendChild(el(`
+    <div class="wiz-steps" aria-label="Paso ${paso} de 3">
+      <span class="on"></span><span class="${paso >= 2 ? "on" : ""}"></span><span class="${paso >= 3 ? "on" : ""}"></span>
+    </div>
+  `));
+
+  if (paso === 1) renderPasoDonde(wrap, state, onChange);
+  else if (paso === 2) renderPasoQuien(wrap, state, onChange);
+  else renderPasoQue(wrap, state, onChange);
+
+  const acciones = el(`
+    <div class="wiz-actions">
+      ${paso > 1 ? `<button class="btn btn-ghost" data-act="atras">Atrás</button>` : ""}
+      <button class="btn btn-primary" data-act="siguiente">${paso === 3 ? "Empezar ronda" : "Siguiente"}</button>
+    </div>
+  `);
+  const atras = acciones.querySelector('[data-act="atras"]');
+  if (atras) {
+    atras.addEventListener("click", () => {
+      pasoNuevaRonda = paso - 1;
+      irA("nueva");
+    });
+  }
+  acciones.querySelector('[data-act="siguiente"]').addEventListener("click", () => {
+    if (paso < 3) {
+      pasoNuevaRonda = paso + 1;
+      busquedaAmigo = "";
+      irA("nueva");
+      return;
+    }
+    // abre la tarjeta en el hoyo de salida, salvo que ya se hayan anotado
+    // golpes (alguien que regresó a editar a media ronda)
+    if (holesPlayedCount(state) === 0) state.round.currentHole = state.round.hoyoInicial;
+    reiniciarPasosNuevaRonda();
+    onChange(state, { skipRender: true });
+    irA("hole");
+  });
+  wrap.appendChild(acciones);
+  return wrap;
+}
+
+/* ---- PASO 1: cancha, salida, reparto de ventajas ---- */
+function renderPasoDonde(wrap, state, onChange) {
+  const course = getActiveCourse(state);
+  wrap.appendChild(el(`<h1 class="wiz-title">¿Dónde juegan?</h1>`));
+
+  wrap.appendChild(el(`<h2 class="screen-title">Cancha</h2>`));
+  const canchas = el(`<div class="choice-grid"></div>`);
+  state.courses.forEach((c) => {
+    const btn = el(`<button class="choice-btn ${c.id === course.id ? "on" : ""}">${c.name}</button>`);
+    btn.addEventListener("click", () => {
+      state.round.courseId = c.id;
+      onChange(state);
+    });
+    canchas.appendChild(btn);
+  });
+  const nueva = el(`<button class="choice-btn choice-btn--nueva">+ Agregar cancha</button>`);
+  nueva.addEventListener("click", () => agregarCancha(state, onChange));
+  canchas.appendChild(nueva);
+  wrap.appendChild(canchas);
+  if (!["lomas", "atlas", "canadas"].includes(course.id)) {
+    wrap.appendChild(el(`<p class="help-text" style="margin-top:-10px">${course.name} tiene par y hándicap genéricos. Ajústalos en Más → Canchas.</p>`));
+  }
+
+  wrap.appendChild(el(`<h2 class="screen-title">Salen por</h2>`));
+  const salida = el(`<div class="choice-grid"></div>`);
+  [1, 10].forEach((h) => {
+    const btn = el(`<button class="choice-btn ${state.round.hoyoInicial === h ? "on" : ""}" style="text-align:center">Hoyo ${h}</button>`);
+    btn.addEventListener("click", () => {
+      state.round.hoyoInicial = h;
+      // saltamos directo a ese hoyo, salvo que ya se hayan anotado golpes
+      // (para no mover a alguien que ya iba a la mitad de la ronda)
+      if (holesPlayedCount(state) === 0) state.round.currentHole = h;
+      // los bloques de 6 hoyos siguen el orden de juego, así que hay que
+      // recalcularlos si cambia por dónde arrancan
+      if (state.bets.foursome.formato !== "cruzado" && state.bets.foursome.participantes4.length === 4) {
+        state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes4, state.bets.foursome.segmentos, h, state.bets.foursome.formato === "roundRobin");
+      }
+      onChange(state);
+    });
+    salida.appendChild(btn);
+  });
+  wrap.appendChild(salida);
+
+  const inv = el(`
+    <button class="toggle-row">
+      <span>
+        <span class="toggle-row__title">Invertir ventajas</span>
+        <span class="toggle-row__sub">Intercambia ventajas de 1-9 y 10-18</span>
+      </span>
+      <span class="switch ${state.round.invertirVentajas ? "on" : ""}"></span>
+    </button>
+  `);
+  inv.addEventListener("click", () => {
+    state.round.invertirVentajas = !state.round.invertirVentajas;
+    onChange(state);
+  });
+  wrap.appendChild(inv);
+}
+
+function agregarCancha(state, onChange) {
+  const name = prompt("Nombre de la nueva cancha:");
+  if (!name || !name.trim()) return;
+  const id = "c" + Date.now();
+  state.courses.push({
+    id,
+    name: name.trim(),
+    par: [...DEFAULT_PAR],
+    strokeIndex: [...DEFAULT_STROKE_INDEX],
+  });
+  state.round.courseId = id;
+  onChange(state);
+}
+
+/* ---- PASO 2: quién juega hoy y con qué hándicap ---- */
+function renderPasoQuien(wrap, state, onChange) {
+  wrap.appendChild(el(`<h1 class="wiz-title">¿Quién juega?</h1>`));
+
+  const hoy = state.players.filter((p) => p.friendId);
+  wrap.appendChild(el(`<h2 class="screen-title">Hoy juegan · ${hoy.length} de 5</h2>`));
+  if (hoy.length === 0) {
+    wrap.appendChild(el(`<p class="help-text">Toca nombres abajo para agregarlos.</p>`));
+  }
+  hoy.forEach((p) => {
+    const friend = state.friends.find((f) => f.id === p.friendId);
+    const abierto = hcpDetalleAbierto.has(p.id);
+    const row = el(`
+      <div class="hoy-row">
+        <div class="hoy-row__main">
+          <div class="hoy-row__name">
+            <span>${p.name}</span>
+            <button class="hoy-row__link" data-act="detalle">${abierto ? "Ocultar modalidades" : "Por modalidad"}</button>
+          </div>
+          <div class="stepper">
+            <button class="stepper__btn" data-act="minus" aria-label="Bajar hándicap">−</button>
+            <span class="stepper__value" style="width:38px;font-size:18px">${fmtHcp(p.hcp.individuales)}</span>
+            <button class="stepper__btn" data-act="plus" aria-label="Subir hándicap">+</button>
+          </div>
+          <button class="hoy-row__quitar" data-act="quitar" aria-label="Quitar a ${p.name} de hoy">✕</button>
+        </div>
+        ${abierto ? `
+        <div class="hcp-grid">
+          ${HCP_MODALIDADES.map((m) => `
+            <label>
+              <span>${m.label}</span>
+              <input type="number" step="0.1" value="${p.hcp[m.key]}" data-role="hcp-${p.id}-${m.key}" data-hcp-key="${m.key}" />
+            </label>
+          `).join("")}
+        </div>` : ""}
+      </div>
+    `);
+    // los botones ± mueven parejo las 5 modalidades (casi siempre es el
+    // mismo número); el detalle por modalidad queda en "Por modalidad"
+    const mover = (d) => {
+      HCP_MODALIDADES.forEach((m) => {
+        p.hcp[m.key] = Math.max(0, Math.round((p.hcp[m.key] + d) * 10) / 10);
+      });
+      guardarHcpEnAmigo(state, p);
+      onChange(state);
+    };
+    row.querySelector('[data-act="minus"]').addEventListener("click", () => mover(-1));
+    row.querySelector('[data-act="plus"]').addEventListener("click", () => mover(1));
+    row.querySelector('[data-act="detalle"]').addEventListener("click", () => {
+      if (abierto) hcpDetalleAbierto.delete(p.id);
+      else hcpDetalleAbierto.add(p.id);
+      onChange(state);
+    });
+    row.querySelector('[data-act="quitar"]').addEventListener("click", () => {
+      if (friend) quitarAmigoHoy(state, friend.id);
+      onChange(state);
+    });
+    row.querySelectorAll("[data-hcp-key]").forEach((input) => {
+      input.addEventListener("input", (e) => {
+        p.hcp[input.dataset.hcpKey] = parseFloat(e.target.value) || 0;
+        guardarHcpEnAmigo(state, p);
+        onChange(state, { skipRender: true });
+      });
+      input.addEventListener("change", () => onChange(state));
+    });
+    wrap.appendChild(row);
+  });
+  if (hoy.length > 0) {
+    wrap.appendChild(el(`<p class="help-text" style="margin-top:2px">Si cambias un hándicap, se queda guardado en tu amigo.</p>`));
+  }
+  if (!state.friends.some((f) => f.esYo)) {
+    wrap.appendChild(el(`<p class="help-text">Marca tu ⭐ en Más → Mis amigos para salir ya elegido cada ronda.</p>`));
+  }
+
+  /* --- amigos para agregar, primero los que más juegan contigo --- */
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:18px">Toca para agregar</h2>`));
+  const buscador = el(`
+    <label class="search-box">
+      <span aria-hidden="true">⌕</span>
+      <input type="text" placeholder="Buscar amigo" aria-label="Buscar amigo" data-role="buscar-amigo" value="${busquedaAmigo}" />
+    </label>
+  `);
+  buscador.querySelector("input").addEventListener("input", (e) => {
+    busquedaAmigo = e.target.value;
+    onChange(state);
+  });
+  wrap.appendChild(buscador);
+
+  const q = busquedaAmigo.trim().toLowerCase();
+  const disponibles = state.friends
+    .filter((f) => !state.players.some((p) => p.friendId === f.id))
+    .filter((f) => !q || f.name.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ra = (a.individualesHistorial || []).length;
+      const rb = (b.individualesHistorial || []).length;
+      return rb - ra || a.name.localeCompare(b.name);
+    });
+  const chips = el(`<div class="chips"></div>`);
+  disponibles.forEach((f) => {
+    const chip = el(`<button class="chip"><span>${f.name}</span><span class="chip__hcp">${fmtHcp(f.hcp.individuales)}</span></button>`);
+    chip.addEventListener("click", () => {
+      if (!elegirAmigoHoy(state, f)) {
+        alert("Ya hay 5 jugadores. Quita a alguien primero.");
+        return;
+      }
+      busquedaAmigo = "";
+      onChange(state);
+    });
+    chips.appendChild(chip);
+  });
+  const nuevo = el(`<button class="chip chip--nuevo">+ Nuevo amigo</button>`);
+  nuevo.addEventListener("click", () => {
+    const name = prompt("Nombre del amigo:", busquedaAmigo.trim());
+    if (!name || !name.trim()) return;
+    const f = defaultFriend("f" + Date.now(), name.trim());
+    state.friends.push(f);
+    elegirAmigoHoy(state, f);
+    busquedaAmigo = "";
+    onChange(state);
+  });
+  chips.appendChild(nuevo);
+  wrap.appendChild(chips);
+  if (q && disponibles.length === 0) {
+    wrap.appendChild(el(`<p class="help-text" style="margin-top:8px">Nadie con ese nombre.</p>`));
+  }
+}
+
+/* ---- PASO 3: qué se juega y cuánto (sale como la ronda anterior) ---- */
+function renderPasoQue(wrap, state, onChange) {
+  wrap.appendChild(el(`<h1 class="wiz-title">¿Qué se juega?</h1>`));
+  wrap.appendChild(el(`<p class="wiz-sub">Como la última vez. Cambia solo lo distinto.</p>`));
+
+  const fs = state.bets.foursome;
+  const esCruzado = fs.formato === "cruzado";
+  const cruces = fs.crosses;
+  const segs = fs.segmentos;
+
+  // cada monto: valor actual + cómo se guarda. Foursome escribe el mismo
+  // monto en sus 3 cruces (o segmentos); el detalle por cruce sigue en Apuestas.
+  const filas = [
+    { key: "individuales", label: "Individuales", nota: "Los partidos se arman en Apuestas", montos: [] },
+    {
+      key: "foursome",
+      label: "Foursome",
+      nota: esCruzado ? "Ida / vuelta, los 3 cruces" : fs.formato === "normal" ? "Ida / vuelta" : "Por hoyo, los 3 bloques",
+      montos: esCruzado
+        ? [
+            { valor: cruces[0].montoIda, guardar: (v) => cruces.forEach((c) => (c.montoIda = v)), etiqueta: "ida" },
+            { valor: cruces[0].montoVuelta, guardar: (v) => cruces.forEach((c) => (c.montoVuelta = v)), etiqueta: "vuelta" },
+          ]
+        : fs.formato === "normal"
+        ? [
+            { valor: segs[0] ? segs[0].montoIda : 0, guardar: (v) => segs.forEach((s) => (s.montoIda = v)), etiqueta: "ida" },
+            { valor: segs[0] ? segs[0].montoVuelta : 0, guardar: (v) => segs.forEach((s) => (s.montoVuelta = v)), etiqueta: "vuelta" },
+          ]
+        : [{ valor: segs[0] ? segs[0].monto : 0, guardar: (v) => segs.forEach((s) => (s.monto = v)), etiqueta: "por hoyo" }],
+    },
+    { key: "skins", label: "Skins", nota: "Por hoyo", montos: [{ valor: state.bets.skins.montoPorHoyo, guardar: (v) => (state.bets.skins.montoPorHoyo = v), etiqueta: "por hoyo" }] },
+    {
+      key: "stableford",
+      label: "Stableford",
+      nota: "Ida · vuelta · total",
+      montos: [
+        { valor: state.bets.stableford.montoIda, guardar: (v) => (state.bets.stableford.montoIda = v), etiqueta: "ida" },
+        { valor: state.bets.stableford.montoVuelta, guardar: (v) => (state.bets.stableford.montoVuelta = v), etiqueta: "vuelta" },
+        { valor: state.bets.stableford.montoTotal, guardar: (v) => (state.bets.stableford.montoTotal = v), etiqueta: "total" },
+      ],
+    },
+    { key: "loba", label: "Loba", nota: "Base por jugador", montos: [{ valor: state.bets.loba.monto, guardar: (v) => (state.bets.loba.monto = v), etiqueta: "base" }] },
+    { key: "banderas", label: "Banderas", nota: "Por bandera", montos: [{ valor: state.bets.banderas.monto, guardar: (v) => (state.bets.banderas.monto = v), etiqueta: "por bandera" }] },
+    { key: "threePutt", label: "3-putt", nota: "A cada uno", montos: [{ valor: state.bets.threePutt.monto, guardar: (v) => (state.bets.threePutt.monto = v), etiqueta: "monto" }] },
+    { key: "chupes", label: "Chupes", nota: "A cada uno", montos: [{ valor: state.bets.chupes.monto, guardar: (v) => (state.bets.chupes.monto = v), etiqueta: "monto" }] },
+  ];
+
+  const lista = el(`<div class="bet-list"></div>`);
+  filas.forEach((f) => {
+    const on = state.bets[f.key].enabled;
+    const row = el(`
+      <div class="bet-row ${on ? "" : "off"}">
+        <button class="switch ${on ? "on" : ""}" data-act="toggle" aria-label="${on ? "Apagar" : "Prender"} ${f.label}"></button>
+        <div class="bet-row__info">
+          <span class="bet-row__name">${f.label}</span>
+          <span class="bet-row__nota">${f.nota}</span>
+        </div>
+        <div class="bet-row__montos ${f.montos.length === 3 ? "bet-row__montos--3" : ""}">
+          ${f.montos.map((m, i) => `<input type="number" inputmode="decimal" value="${m.valor}" data-role="monto-${f.key}-${i}" aria-label="${f.label} ${m.etiqueta}" />`).join("")}
+        </div>
+      </div>
+    `);
+    row.querySelector('[data-act="toggle"]').addEventListener("click", () => {
+      state.bets[f.key].enabled = !on;
+      onChange(state);
+    });
+    f.montos.forEach((m, i) => {
+      const input = row.querySelector(`[data-role="monto-${f.key}-${i}"]`);
+      input.addEventListener("input", (e) => {
+        m.guardar(parseFloat(e.target.value) || 0);
+        onChange(state, { skipRender: true });
+      });
+      input.addEventListener("change", () => onChange(state));
+    });
+    lista.appendChild(row);
+  });
+  wrap.appendChild(lista);
+  wrap.appendChild(el(`<p class="help-text" style="margin-top:10px">Formato de foursome, parejas y quién entra a cada apuesta: en Apuestas.</p>`));
+}
+
+
+function renderConfigScreen(state, onChange, irA) {
   const wrap = el(`<div></div>`);
   const course = getActiveCourse(state);
 
+  /* ---- RONDA DE HOY (cancha, jugadores y apuestas viven en "Nueva ronda") ---- */
+  const nJugadores = state.players.filter((p) => p.friendId).length;
+  const nApuestas = Object.values(state.bets).filter((b) => b.enabled).length;
+  wrap.appendChild(el(`<h2 class="screen-title">Ronda de hoy</h2>`));
+  const rondaCard = el(`
+    <div class="card">
+      <p style="margin:0 0 10px">${course.name} · salida por el ${state.round.hoyoInicial} · ${nJugadores} jugadores · ${nApuestas} apuestas</p>
+      <button class="btn btn-ghost btn-small" data-act="editar-ronda" style="width:100%">Editar ronda de hoy</button>
+    </div>
+  `);
+  rondaCard.querySelector('[data-act="editar-ronda"]').addEventListener("click", () => {
+    reiniciarPasosNuevaRonda();
+    irA("nueva");
+  });
+  wrap.appendChild(rondaCard);
+
   /* ---- RESPALDO (exportar/importar todo lo guardado) ---- */
-  wrap.appendChild(el(`<h2 class="screen-title">Respaldo</h2>`));
   const rondasSinRespaldo = state.roundsHistory.length - (state.respaldo.rondas || 0);
   const hazExportar = () => {
     const fecha = new Date().toISOString().slice(0, 10);
@@ -74,115 +474,6 @@ function renderConfigScreen(state, onChange) {
     avisoRespaldo.querySelector('[data-role="exportar-aviso"]').addEventListener("click", hazExportar);
     wrap.appendChild(avisoRespaldo);
   }
-  const respaldoCard = el(`
-    <div class="card">
-      <p class="help-text" style="margin-top:0">Tus datos viven solo en este teléfono. Exporta un respaldo seguido.</p>
-      <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
-      <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
-      <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
-    </div>
-  `);
-  respaldoCard.querySelector('[data-role="exportar"]').addEventListener("click", hazExportar);
-  const importInput = respaldoCard.querySelector('[data-role="import-file"]');
-  respaldoCard.querySelector('[data-role="importar"]').addEventListener("click", () => importInput.click());
-  importInput.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      let parsed;
-      try {
-        parsed = JSON.parse(ev.target.result);
-      } catch (err) {
-        alert("No se pudo leer el archivo. Asegúrate de que sea un respaldo exportado desde esta misma app.");
-        return;
-      }
-      if (!parsed || !Array.isArray(parsed.players) || !parsed.bets) {
-        alert("Este archivo no parece un respaldo válido de Las Lomas Bets.");
-        return;
-      }
-      const ok = confirm("Esto va a REEMPLAZAR todo lo que tienes ahorita en la app (jugadores, hándicaps, montos, historial, amigos) con lo que traiga este respaldo. ¿Continuar?");
-      if (!ok) {
-        importInput.value = "";
-        return;
-      }
-      const migrado = migrateState(parsed);
-      onChange(migrado);
-    };
-    reader.readAsText(file);
-  });
-  wrap.appendChild(respaldoCard);
-
-  /* ---- SELECTOR DE CANCHA ---- */
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Cancha de hoy</h2>`));
-  const courseCard = el(`
-    <div class="card">
-      <div class="field">
-        <label>Jugando en</label>
-        <select data-role="course-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;color:var(--crema);font-size:15px">
-          ${state.courses.map((c) => `<option value="${c.id}" ${c.id === course.id ? "selected" : ""}>${c.name}</option>`).join("")}
-        </select>
-      </div>
-      <button class="btn btn-ghost btn-small" data-role="add-course" style="width:100%">+ Agregar cancha nueva</button>
-      <div class="field" style="margin-top:10px">
-        <label>¿En qué hoyo arrancan?</label>
-        <select data-role="hoyo-inicial" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;color:var(--crema);font-size:15px">
-          <option value="1" ${state.round.hoyoInicial === 1 ? "selected" : ""}>Hoyo 1 (normal)</option>
-          <option value="10" ${state.round.hoyoInicial === 10 ? "selected" : ""}>Hoyo 10 (salida por el 10)</option>
-        </select>
-      </div>
-      <div class="field" style="margin-top:10px">
-        <label>Reparto de ventajas</label>
-        <button data-role="invertir-ventajas" class="btn ${state.round.invertirVentajas ? "btn-primary" : "btn-ghost"} btn-small" style="width:100%">
-          ${state.round.invertirVentajas ? "Invertido (ida ↔ vuelta) — toca para volver a normal" : "Normal (según hándicap real de cada hoyo)"}
-        </button>
-        <p class="help-text" style="margin:6px 0 0">Intercambia ventajas de 1-9 y 10-18.</p>
-      </div>
-    </div>
-  `);
-  courseCard.querySelector('[data-role="course-select"]').addEventListener("change", (e) => {
-    state.round.courseId = e.target.value;
-    onChange(state);
-  });
-  courseCard.querySelector('[data-role="add-course"]').addEventListener("click", () => {
-    const name = prompt("Nombre de la nueva cancha:");
-    if (!name || !name.trim()) return;
-    const id = "c" + Date.now();
-    state.courses.push({
-      id,
-      name: name.trim(),
-      par: [...DEFAULT_PAR],
-      strokeIndex: [...DEFAULT_STROKE_INDEX],
-    });
-    state.round.courseId = id;
-    onChange(state);
-  });
-  courseCard.querySelector('[data-role="hoyo-inicial"]').addEventListener("change", (e) => {
-    const nuevo = parseInt(e.target.value);
-    state.round.hoyoInicial = nuevo;
-    // saltamos directo a ese hoyo, salvo que ya se hayan anotado golpes
-    // (para no mover a alguien que ya iba a la mitad de la ronda)
-    if (holesPlayedCount(state) === 0) {
-      state.round.currentHole = nuevo;
-    }
-    // los bloques de 6 hoyos siguen el orden de juego, así que hay que
-    // recalcularlos si cambia por dónde arrancan
-    if (state.bets.foursome.formato !== "cruzado" && state.bets.foursome.participantes4.length === 4) {
-      state.bets.foursome.segmentos = generarSegmentosRotacion(state.bets.foursome.participantes4, state.bets.foursome.segmentos, nuevo, state.bets.foursome.formato === "roundRobin");
-    }
-    onChange(state);
-  });
-  courseCard.querySelector('[data-role="invertir-ventajas"]').addEventListener("click", () => {
-    state.round.invertirVentajas = !state.round.invertirVentajas;
-    onChange(state);
-  });
-  wrap.appendChild(courseCard);
-  const esDatoReal = ["lomas", "atlas", "canadas"].includes(course.id);
-  const avisoTexto = esDatoReal
-    ? `${course.name} ya tiene par y hándicap por hoyo 100% reales, de la tarjeta oficial del club.`
-    : `⚠️ Par y hándicap genéricos. Ajústalos abajo.`;
-  if (!esDatoReal) wrap.appendChild(el(`<p class="help-text">${avisoTexto}</p>`));
-
   /* ---- MIS AMIGOS (lista permanente + biblia) ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Mis amigos</h2>`));
 
@@ -245,298 +536,17 @@ function renderConfigScreen(state, onChange) {
   });
   wrap.appendChild(addFriendBtn);
 
-  /* ---- JUGADORES ---- */
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores de hoy</h2>`));
-  wrap.appendChild(el(`<p class="help-text">Marca hasta 5.</p>`));
-  const seleccionCard = el(`<div class="card"></div>`);
-  if (state.friends.length === 0) {
-    seleccionCard.appendChild(el(`<p class="help-text" style="margin:0">Agrega amigos arriba.</p>`));
-  } else {
-    state.friends
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach((f) => {
-        const enUso = state.players.some((p) => p.friendId === f.id);
-        const row = el(`
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
-            <input type="checkbox" data-role="jugador-hoy" data-friend-id="${f.id}" ${enUso ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
-            <span>${f.name}</span>
-          </label>
-        `);
-        row.querySelector("input").addEventListener("change", (e) => {
-          if (e.target.checked) {
-            const nEnUso = state.players.filter((p) => p.friendId).length;
-            if (nEnUso >= 5) {
-              alert("Ya tienes 5 jugadores marcados. Desmarca a alguien primero para agregar a otro.");
-              e.target.checked = false;
-              return;
-            }
-            // ocupa el primer lugar libre (sin amigo asignado todavía)
-            const slotLibre = state.players.find((p) => !p.friendId);
-            if (slotLibre) {
-              slotLibre.name = f.name;
-              slotLibre.friendId = f.id;
-              slotLibre.hcp = { ...f.hcp };
-              // si este amigo es "tú" (⭐), este lugar pasa a ser "quién
-              // soy yo" para el historial — así el historial y "cuánto le
-              // he ganado a cada quien" se calculan de la persona correcta.
-              if (f.esYo) state.miPlayerId = slotLibre.id;
-            }
-          } else {
-            // libera el lugar que tenía este amigo, lo regresa a placeholder
-            const slot = state.players.find((p) => p.friendId === f.id);
-            if (slot) {
-              slot.name = `Jugador ${slot.id}`;
-              slot.friendId = null;
-            }
-          }
-          onChange(state);
-        });
-        seleccionCard.appendChild(row);
-      });
-  }
-  wrap.appendChild(seleccionCard);
+  /* ---- CANCHAS: par y hándicap por hoyo de la cancha de hoy ---- */
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Canchas</h2>`));
+  const esDatoReal = ["lomas", "atlas", "canadas"].includes(course.id);
+  const avisoTexto = esDatoReal
+    ? `${course.name} ya tiene par y hándicap por hoyo 100% reales, de la tarjeta oficial del club.`
+    : `⚠️ Par y hándicap genéricos. Ajústalos abajo.`;
+  if (!esDatoReal) wrap.appendChild(el(`<p class="help-text">${avisoTexto}</p>`));
 
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Jugadores y hándicap</h2>`));
-
-  const yoCard = el(`
-    <div class="card">
-      <div class="field">
-        <label>¿Cuál de estos 5 eres tú?</label>
-        <select data-role="yo-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-          ${state.players.map((p) => `<option value="${p.id}" ${state.miPlayerId === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
-        </select>
-      </div>
-    </div>
-  `);
-  yoCard.querySelector('[data-role="yo-select"]').addEventListener("change", (e) => {
-    state.miPlayerId = parseInt(e.target.value);
-    onChange(state);
-  });
-  wrap.appendChild(yoCard);
-
-  const HCP_MODALIDADES = [
-    { key: "individuales", label: "Indiv." },
-    { key: "foursome", label: "Foursome" },
-    { key: "skins", label: "Skins" },
-    { key: "loba", label: "Loba" },
-    { key: "stableford", label: "Stableford" },
-  ];
-
-  state.players.forEach((p) => {
-    const friendOptions = state.friends
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((f) => `<option value="${f.id}" ${p.friendId === f.id ? "selected" : ""}>${f.name}${f.biblia !== 0 ? ` (biblia ${f.biblia > 0 ? "+" : ""}${f.biblia})` : ""}</option>`)
-      .join("");
-    const card = el(`
-      <div class="card">
-        <div class="field">
-          <label>Nombre</label>
-          <input type="text" value="${p.name}" data-role="name" />
-        </div>
-        ${state.friends.length > 0 ? `
-        <div class="field" style="margin-top:6px">
-          <select data-role="pick-friend" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:8px;color:var(--crema);font-size:13px">
-            <option value="">— elegir de mis amigos —</option>
-            ${friendOptions}
-          </select>
-        </div>` : ""}
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
-          ${HCP_MODALIDADES.map((m) => `
-            <div style="text-align:center">
-              <div style="font-size:10px;opacity:0.6;margin-bottom:3px">${m.label}</div>
-              <input type="number" value="${p.hcp[m.key]}" step="0.1" data-hcp-key="${m.key}"
-                style="width:100%;text-align:center;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:8px;padding:8px 2px;color:var(--crema);font-family:var(--font-mono);font-size:13px" />
-            </div>
-          `).join("")}
-        </div>
-        ${p.friendId ? `<button class="btn btn-ghost btn-small" data-role="save-hcp-friend" style="width:100%;margin-top:8px">💾 Guardar este hándicap en ${(state.friends.find((f) => f.id === p.friendId) || {}).name || "el amigo"}</button>` : ""}
-      </div>
-    `);
-    card.querySelector('[data-role="name"]').addEventListener("input", (e) => {
-      p.name = e.target.value;
-      p.friendId = null; // editar el nombre a mano desliga de "mis amigos"
-      onChange(state, { skipRender: true });
-    });
-    const pickFriend = card.querySelector('[data-role="pick-friend"]');
-    if (pickFriend) {
-      pickFriend.addEventListener("change", (e) => {
-        if (e.target.value === "") {
-          p.friendId = null;
-          onChange(state);
-          return;
-        }
-        const friend = state.friends.find((f) => f.id === e.target.value);
-        if (friend) {
-          p.name = friend.name;
-          p.friendId = friend.id;
-          // recupera el hándicap guardado de este amigo, para no
-          // tener que volver a escribirlo cada ronda.
-          p.hcp = { ...friend.hcp };
-          // si este amigo es "tú" (⭐), este lugar pasa a ser "quién soy yo"
-          // para el historial — evita que el historial se guarde a nombre
-          // de otro jugador si el ⭐ no cayó en el lugar de siempre.
-          if (friend.esYo) state.miPlayerId = p.id;
-          onChange(state);
-        }
-      });
-    }
-    const saveHcpBtn = card.querySelector('[data-role="save-hcp-friend"]');
-    if (saveHcpBtn) {
-      saveHcpBtn.addEventListener("click", () => {
-        const friend = state.friends.find((f) => f.id === p.friendId);
-        if (!friend) return;
-        friend.hcp = { ...p.hcp };
-        onChange(state);
-      });
-    }
-    HCP_MODALIDADES.forEach((m) => {
-      const input = card.querySelector(`[data-hcp-key="${m.key}"]`);
-      input.addEventListener("input", (e) => {
-        p.hcp[m.key] = parseFloat(e.target.value) || 0;
-        onChange(state, { skipRender: true });
-      });
-      input.addEventListener("change", () => onChange(state));
-    });
-    wrap.appendChild(card);
-  });
-
-  /* ---- QUÉ SE JUEGA HOY ---- */
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Qué se juega hoy</h2>`));
-  const modalidades = [
-    { key: "individuales", label: "Individuales" },
-    { key: "foursome", label: "Foursome" },
-    { key: "skins", label: "Skins" },
-    { key: "loba", label: "Loba" },
-    { key: "stableford", label: "Stableford" },
-    { key: "banderas", label: "Banderas" },
-    { key: "threePutt", label: "3-putt" },
-    { key: "chupes", label: "Chupes" },
-  ];
-  const modalCard = el(`<div class="card"></div>`);
-  modalidades.forEach((m) => {
-    const row = el(`
-      <div class="checkbox-row">
-        <input type="checkbox" ${state.bets[m.key].enabled ? "checked" : ""} data-key="${m.key}" />
-        <span>${m.label}</span>
-      </div>
-    `);
-    row.querySelector("input").addEventListener("change", (e) => {
-      state.bets[m.key].enabled = e.target.checked;
-      onChange(state);
-    });
-    modalCard.appendChild(row);
-  });
-  wrap.appendChild(modalCard);
-
-  /* (La configuración de Foursome — formato, quién juega, parejas base — se
-     movió a la pestaña Apuestas, junto con sus montos y resultados, para no
-     tener que ir y venir entre pestañas. Ver renderBetsScreen.) */
-
-  /* ---- MONTOS ---- */
-  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Montos de las apuestas</h2>`));
-
-  const crucesFs = state.bets.foursome.crosses;
-  const idasIguales = crucesFs.every((c) => c.montoIda === crucesFs[0].montoIda);
-  const vueltasIguales = crucesFs.every((c) => c.montoVuelta === crucesFs[0].montoVuelta);
-  const fsIdaValue = idasIguales ? crucesFs[0].montoIda : "";
-  const fsVueltaValue = vueltasIguales ? crucesFs[0].montoVuelta : "";
-
-  const betsCard = el(`
-    <div class="card">
-      <div class="field">
-        <label>Foursome — $ por hoyo, hoyos 1-9 (igual para bola alta y baja)</label>
-        <input type="number" value="${fsIdaValue}" placeholder="${idasIguales ? "" : "Cruces con montos distintos"}" data-role="fs-ida" />
-      </div>
-      <div class="field">
-        <label>Foursome — $ por hoyo, hoyos 10-18 (el que va perdiendo puede subirlo)</label>
-        <input type="number" value="${fsVueltaValue}" placeholder="${vueltasIguales ? "" : "Cruces con montos distintos"}" data-role="fs-vuelta" />
-      </div>
-      ${(idasIguales && vueltasIguales) ? "" : `<p class="help-text">⚠️ Montos distintos por cruce.</p>`}
-      ${(!idasIguales || !vueltasIguales) ? `<button class="btn btn-ghost btn-small" data-role="fs-igualar" style="width:100%;margin-bottom:8px">Igualar los 3 cruces al del primero (${crucesFs[0].montoIda}/${crucesFs[0].montoVuelta})</button>` : ""}
-
-      <div class="field">
-        <label>Skins — $ por hoyo</label>
-        <input type="number" value="${state.bets.skins.montoPorHoyo}" data-role="skins" />
-      </div>
-
-      <div class="field">
-        <label>Loba — $ base por jugador (se multiplica x3 y se reparte)</label>
-        <input type="number" value="${state.bets.loba.monto}" data-role="loba" />
-      </div>
-
-      <div class="field">
-        <label>Stableford — $ premio ida (hoyos 1-9)</label>
-        <input type="number" value="${state.bets.stableford.montoIda}" data-role="sf-ida" />
-      </div>
-      <div class="field">
-        <label>Stableford — $ premio vuelta (hoyos 10-18)</label>
-        <input type="number" value="${state.bets.stableford.montoVuelta}" data-role="sf-vuelta" />
-      </div>
-      <div class="field">
-        <label>Stableford — $ premio total (18 hoyos)</label>
-        <input type="number" value="${state.bets.stableford.montoTotal}" data-role="sf-total" />
-      </div>
-    </div>
-  `);
-
-  const fsIdaInput = betsCard.querySelector('[data-role="fs-ida"]');
-  if (fsIdaInput) {
-    fsIdaInput.addEventListener("input", (e) => {
-      const v = parseFloat(e.target.value) || 0;
-      state.bets.foursome.crosses.forEach((c) => (c.montoIda = v));
-      onChange(state, { skipRender: true });
-    });
-    fsIdaInput.addEventListener("change", () => onChange(state));
-  }
-  const fsVueltaInput = betsCard.querySelector('[data-role="fs-vuelta"]');
-  if (fsVueltaInput) {
-    fsVueltaInput.addEventListener("input", (e) => {
-      const v = parseFloat(e.target.value) || 0;
-      state.bets.foursome.crosses.forEach((c) => (c.montoVuelta = v));
-      onChange(state, { skipRender: true });
-    });
-    fsVueltaInput.addEventListener("change", () => onChange(state));
-  }
-  const igualarBtn = betsCard.querySelector('[data-role="fs-igualar"]');
-  if (igualarBtn) {
-    igualarBtn.addEventListener("click", () => {
-      const v1 = crucesFs[0].montoIda;
-      const v2 = crucesFs[0].montoVuelta;
-      state.bets.foursome.crosses.forEach((c) => {
-        c.montoIda = v1;
-        c.montoVuelta = v2;
-      });
-      onChange(state);
-    });
-  }
-  betsCard.querySelector('[data-role="skins"]').addEventListener("input", (e) => {
-    state.bets.skins.montoPorHoyo = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="skins"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="loba"]').addEventListener("input", (e) => {
-    state.bets.loba.monto = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="loba"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="sf-ida"]').addEventListener("input", (e) => {
-    state.bets.stableford.montoIda = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="sf-ida"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="sf-vuelta"]').addEventListener("input", (e) => {
-    state.bets.stableford.montoVuelta = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="sf-vuelta"]').addEventListener("change", () => onChange(state));
-  betsCard.querySelector('[data-role="sf-total"]').addEventListener("input", (e) => {
-    state.bets.stableford.montoTotal = parseFloat(e.target.value) || 0;
-    onChange(state, { skipRender: true });
-  });
-  betsCard.querySelector('[data-role="sf-total"]').addEventListener("change", () => onChange(state));
-  wrap.appendChild(betsCard);
+  const addCourseBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-bottom:8px">+ Agregar cancha nueva</button>`);
+  addCourseBtn.addEventListener("click", () => agregarCancha(state, onChange));
+  wrap.appendChild(addCourseBtn);
 
   /* ---- PAR Y STROKE INDEX DE LA CANCHA ACTIVA ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Par — ${course.name}</h2>`));
@@ -578,6 +588,46 @@ function renderConfigScreen(state, onChange) {
   }
   siCard.appendChild(siGrid);
   wrap.appendChild(siCard);
+
+  wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Respaldo</h2>`));
+  const respaldoCard = el(`
+    <div class="card">
+      <p class="help-text" style="margin-top:0">Tus datos viven solo en este teléfono. Exporta un respaldo seguido.</p>
+      <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
+      <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
+      <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
+    </div>
+  `);
+  respaldoCard.querySelector('[data-role="exportar"]').addEventListener("click", hazExportar);
+  const importInput = respaldoCard.querySelector('[data-role="import-file"]');
+  respaldoCard.querySelector('[data-role="importar"]').addEventListener("click", () => importInput.click());
+  importInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(ev.target.result);
+      } catch (err) {
+        alert("No se pudo leer el archivo. Asegúrate de que sea un respaldo exportado desde esta misma app.");
+        return;
+      }
+      if (!parsed || !Array.isArray(parsed.players) || !parsed.bets) {
+        alert("Este archivo no parece un respaldo válido de Las Lomas Bets.");
+        return;
+      }
+      const ok = confirm("Esto va a REEMPLAZAR todo lo que tienes ahorita en la app (jugadores, hándicaps, montos, historial, amigos) con lo que traiga este respaldo. ¿Continuar?");
+      if (!ok) {
+        importInput.value = "";
+        return;
+      }
+      const migrado = migrateState(parsed);
+      onChange(migrado);
+    };
+    reader.readAsText(file);
+  });
+  wrap.appendChild(respaldoCard);
 
   return wrap;
 }

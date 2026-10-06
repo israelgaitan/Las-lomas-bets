@@ -5,15 +5,15 @@
 
 (function () {
   let state = loadState();
-  let activeTab = "hole"; // "config" | "hole" | "bets" | "summary"
+  let activeTab = "hole"; // "nueva" | "config" | "hole" | "bets" | "summary"
 
   // Si no hay hándicaps configurados todavía (todos en 0) y no hay golpes,
-  // arrancamos en la pantalla de configuración.
+  // arrancamos en los pasos de "Nueva ronda".
   const allHcpZero = state.players.every((p) =>
     Object.values(p.hcp).every((v) => v === 0)
   );
   const noScores = holesPlayedCount(state) === 0;
-  if (allHcpZero && noScores) activeTab = "config";
+  if (allHcpZero && noScores) activeTab = "nueva";
 
   const app = document.getElementById("app");
 
@@ -78,14 +78,14 @@
     const header = el(`
       <div class="app-header">
         <span class="app-header__title"><span class="flag">⛳</span> Las Lomas Bets</span>
-        <button class="app-header__reset" data-act="reset">Resetear ronda</button>
+        <button class="app-header__reset" data-act="reset">Nueva ronda</button>
       </div>
     `);
     header.querySelector('[data-act="reset"]').addEventListener("click", () => {
       const hayDatos = holesPlayedCount(state) > 0;
       const mensaje = hayDatos
-        ? "¿Resetear ronda? Antes de borrar, tu resultado de hoy (individuales contra tus amigos guardados + tu saldo total del día) se guarda automáticamente en el historial. Se borrará TODA la demás información que metiste a mano: jugadores, hándicaps, montos de las 7 modalidades, participantes, golpes y marcas del juego. Las canchas y tu lista de amigos se conservan."
-        : "¿Resetear todo? Se borrará TODA la información que metiste a mano: jugadores, hándicaps, montos de las 7 modalidades, participantes, golpes y marcas del juego. Las canchas y tu lista de amigos se conservan.";
+        ? "¿Empezar una ronda nueva? La de hoy se guarda en el historial y se borran sus golpes y jugadores. Tus apuestas y montos se quedan como estaban."
+        : "¿Empezar una ronda nueva? Se borran los jugadores y golpes de hoy. Tus apuestas y montos se quedan como estaban.";
       const ok = confirm(mensaje);
       if (!ok) return;
       if (hayDatos) archivarRonda(state);
@@ -116,7 +116,10 @@
       fresh.round.currentHole = fresh.round.hoyoInicial;
       // conservamos también si el reparto de ventajas está invertido
       fresh.round.invertirVentajas = state.round.invertirVentajas || false;
-      activeTab = "config";
+      // "apuestas favoritas": qué se juega y montos, como la ronda anterior
+      conservarApuestasFavoritas(state.bets, fresh.bets, fresh.round.hoyoInicial);
+      reiniciarPasosNuevaRonda();
+      activeTab = "nueva";
       onChange(fresh);
     });
     app.appendChild(header);
@@ -124,7 +127,8 @@
     // Main content
     const main = el(`<div class="app-main"></div>`);
     let screen;
-    if (activeTab === "config") screen = renderConfigScreen(state, onChange);
+    if (activeTab === "nueva") screen = renderNuevaRondaScreen(state, onChange, irA);
+    else if (activeTab === "config") screen = renderConfigScreen(state, onChange, irA);
     else if (activeTab === "hole") screen = renderHoleScreen(state, onChange);
     else if (activeTab === "bets") screen = renderBetsScreen(state, onChange);
     else screen = renderSummaryScreen(state, onChange);
@@ -142,7 +146,7 @@
     const tabBar = el(`<div class="tab-bar"></div>`);
     tabs.forEach((t) => {
       const btn = el(`
-        <button class="tab-btn ${activeTab === t.id ? "active" : ""}" data-tab-id="${t.id}">
+        <button class="tab-btn ${activeTab === t.id || (t.id === "config" && activeTab === "nueva") ? "active" : ""}" data-tab-id="${t.id}">
           <span class="tab-btn__icon">${t.icon}${t.id === "config" && rondasSinRespaldo >= 5 ? '<span class="tab-btn__dot"></span>' : ""}</span>
           <span>${t.label}</span>
         </button>
@@ -152,6 +156,13 @@
     app.appendChild(tabBar);
 
     restoreFocus(focusState);
+  }
+
+  // para que una pantalla mande a otra (ej: "Empezar ronda" -> Hoyo)
+  function irA(tab) {
+    activeTab = tab;
+    window.scrollTo(0, 0);
+    render();
   }
 
   function onChange(newState, opts) {
