@@ -591,6 +591,131 @@ function renderConfigScreen(state, onChange) {
    PANTALLA: TARJETA DE HOYO
    ============================================================ */
 
+const NOMBRES_VS_PAR = { "-3": "Albatros", "-2": "Águila", "-1": "Birdie", "0": "Par", "1": "Bogey", "2": "Doble", "3": "Triple" };
+
+function nombreVsPar(golpes, par) {
+  if (golpes === 1) return "H en 1";
+  const diff = golpes - par;
+  return NOMBRES_VS_PAR[diff] || `+${diff}`;
+}
+
+function claseVsPar(golpes, par) {
+  const diff = golpes - par;
+  if (diff < 0) return "under";
+  if (diff === 0) return "even";
+  return "over";
+}
+
+// Fila de botones grandes para el golpe del hoyo: de águila a doble bogey,
+// con chips chicos a los lados para lo que se sale de ese rango.
+function scoreChipsHtml(bruto, par) {
+  const desde = Math.max(1, par - 2);
+  const hasta = par + 2;
+  const chip = (valor, extraClase) => {
+    const activo = bruto === valor;
+    return `
+      <button class="score-chip score-chip--${claseVsPar(valor, par)} ${activo ? "active" : ""} ${extraClase || ""}" data-score="${valor}">
+        <span class="score-chip__num">${valor}</span>
+        <span class="score-chip__label">${nombreVsPar(valor, par)}</span>
+      </button>`;
+  };
+  const partes = [];
+  if (par - 3 >= 1) {
+    const fuera = bruto !== null && bruto < desde;
+    partes.push(`
+      <button class="score-chip score-chip--side score-chip--under ${fuera ? "active" : ""}" data-score="menos" aria-label="Menos golpes">
+        <span class="score-chip__num">${fuera ? bruto : "−"}</span>
+        ${fuera ? `<span class="score-chip__label">${nombreVsPar(bruto, par)}</span>` : ""}
+      </button>`);
+  }
+  for (let v = desde; v <= hasta; v++) partes.push(chip(v));
+  const fueraArriba = bruto !== null && bruto > hasta;
+  partes.push(`
+    <button class="score-chip score-chip--side score-chip--over ${fueraArriba ? "active" : ""}" data-score="mas" aria-label="Más golpes">
+      <span class="score-chip__num">${fueraArriba ? bruto : "+"}</span>
+      ${fueraArriba ? `<span class="score-chip__label">${nombreVsPar(bruto, par)}</span>` : ""}
+    </button>`);
+  return `<div class="score-chips">${partes.join("")}</div>`;
+}
+
+/* ---- AVANCE AUTOMÁTICO DE HOYO ---- */
+
+// Lo que además de los golpes hace falta capturar en el hoyo antes de
+// poder pasar solos al siguiente (si no, se quedaría sin marcar).
+function pendientesDelHoyo(state, h) {
+  const course = getActiveCourse(state);
+  const pendientes = [];
+  const usaOyes =
+    (state.bets.individuales.enabled && state.bets.individuales.matches.length > 0) ||
+    state.bets.foursome.enabled ||
+    state.bets.skins.enabled ||
+    state.bets.loba.enabled;
+  if (course.par[h] === 3 && usaOyes && Object.keys(state.oyesOrden[h] || {}).length === 0) {
+    pendientes.push("Oyes");
+  }
+  if (state.bets.loba.enabled) {
+    const cfg = state.loba[h];
+    if (!cfg || cfg.loba === null || cfg.companero === null) pendientes.push("Loba");
+  }
+  return pendientes;
+}
+
+function hoyoCompleto(state, h) {
+  return state.players.every((p) => state.scores[p.id][h] !== null) && pendientesDelHoyo(state, h).length === 0;
+}
+
+let avanceTimer = null;
+let avanceToast = null;
+
+function cancelarAvance() {
+  if (avanceTimer) clearTimeout(avanceTimer);
+  avanceTimer = null;
+  if (avanceToast) avanceToast.remove();
+  avanceToast = null;
+}
+
+// Aplica un cambio del hoyo y, si con él el hoyo quedó completo (antes no
+// lo estaba), programa el paso al siguiente hoyo en orden de juego. Se
+// muestra un aviso con "Quedarme" por si todavía falta algo (unidad,
+// banderas, etc.).
+function registrarCambioDeHoyo(state, h, onChange, aplicar) {
+  const estabaCompleto = hoyoCompleto(state, h);
+  aplicar();
+  const quedoCompleto = hoyoCompleto(state, h);
+  if (!quedoCompleto) cancelarAvance();
+  onChange(state);
+  if (!quedoCompleto) return;
+  // si ya estaba completo, solo reiniciamos el aviso cuando sigue corriendo
+  // (ej. marcando el 2º y 3º del oyes): así no se cambia de hoyo a media
+  // captura, pero editar un hoyo viejo no te mueve.
+  if (estabaCompleto && !avanceTimer) return;
+
+  const orden = ordenDeJuego(state.round.hoyoInicial);
+  const pos = orden.indexOf(h);
+  if (pos === orden.length - 1) return; // último hoyo de la ronda
+  const siguiente = orden[pos + 1];
+
+  cancelarAvance();
+  avanceToast = el(`
+    <div class="advance-toast" role="status">
+      <span>Hoyo ${h + 1} completo · pasando al <b>${siguiente + 1}</b></span>
+      <button data-act="quedarme">Quedarme</button>
+      <div class="advance-toast__bar"></div>
+    </div>
+  `);
+  avanceToast.querySelector('[data-act="quedarme"]').addEventListener("click", cancelarAvance);
+  document.body.appendChild(avanceToast);
+  avanceTimer = setTimeout(() => {
+    cancelarAvance();
+    // si mientras tanto se cambiaron de hoyo a mano o el hoyo dejó de
+    // estar completo, no hacemos nada
+    if (state.round.currentHole !== h + 1 || !hoyoCompleto(state, h)) return;
+    state.round.currentHole = siguiente + 1;
+    onChange(state);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, 1600);
+}
+
 function renderHoleScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const h = state.round.currentHole - 1; // índice 0-based
@@ -621,6 +746,7 @@ function renderHoleScreen(state, onChange) {
     </div>
   `);
   nav.querySelector('[data-act="prev"]').addEventListener("click", () => {
+    cancelarAvance();
     if (h > 0) {
       state.round.currentHole -= 1;
       onChange(state);
@@ -630,6 +756,7 @@ function renderHoleScreen(state, onChange) {
     }
   });
   nav.querySelector('[data-act="next"]').addEventListener("click", () => {
+    cancelarAvance();
     if (h < 17) {
       state.round.currentHole += 1;
       onChange(state);
@@ -648,6 +775,7 @@ function renderHoleScreen(state, onChange) {
     if (i === h) dot.classList.add("current");
     else if (played) dot.classList.add("played");
     dot.addEventListener("click", () => {
+      cancelarAvance();
       state.round.currentHole = i + 1;
       onChange(state);
     });
@@ -745,47 +873,41 @@ function renderHoleScreen(state, onChange) {
     const isOyes = (state.oyesOrden[h] || {})[p.id] === 1;
     const banderasCfg = state.banderas[p.id][h];
 
+    // Banderas, chupes y 3-putt van juntos en una sola fila compacta debajo
+    // de los golpes, para que la tarjeta de cada jugador no crezca tanto.
+    const extras = [];
+    if (state.bets.banderas.enabled && state.bets.banderas.participantes.includes(p.id)) {
+      extras.push(`
+          <div class="stepper stepper--compact">
+            <button class="stepper__btn" data-act="banderas-minus">−</button>
+            <span class="stepper__value ${banderasCfg.banderas === 0 ? "empty" : ""}" data-role="banderas-value">🚩${banderasCfg.banderas}</span>
+            <button class="stepper__btn" data-act="banderas-plus">+</button>
+          </div>`);
+    }
+    if (state.bets.chupes.enabled && state.bets.chupes.participantes.includes(p.id)) {
+      extras.push(`
+          <div class="stepper stepper--compact">
+            <button class="stepper__btn" data-act="chupes-minus">−</button>
+            <span class="stepper__value ${banderasCfg.chupes === 0 ? "empty" : ""}" data-role="chupes-value">🥤${banderasCfg.chupes}</span>
+            <button class="stepper__btn" data-act="chupes-plus">+</button>
+          </div>`);
+    }
+    if (state.bets.threePutt.enabled && state.bets.threePutt.participantes.includes(p.id)) {
+      extras.push(`<button class="event-toggle ${banderasCfg.threePutt ? "active" : ""}" data-act="threeputt">3-putt</button>`);
+    }
+    const extrasHtml = extras.join("");
+
     const row = el(`
       <div class="player-row">
         <div class="player-row__top">
           <span class="player-row__name">${p.name}</span>
           ${(ventajasPorJugador[p.id] || []).map((v) => `<span class="ventaja-badge">${v}</span>`).join("")}
-        </div>
-        <div class="player-row__controls">
-          <div class="stepper">
-            <button class="stepper__btn" data-act="minus">−</button>
-            <span class="stepper__value ${bruto === null ? "empty" : ""}" data-role="value">${bruto === null ? "—" : bruto}</span>
-            <button class="stepper__btn" data-act="plus">+</button>
-          </div>
           <div class="event-toggles">
             <button class="event-toggle ${isMetida ? "active" : ""}" data-act="metida">Unidad</button>
           </div>
         </div>
-        ${state.bets.banderas.enabled && state.bets.banderas.participantes.includes(p.id) ? `
-        <div class="player-row__controls" style="margin-top:8px">
-          <div class="stepper">
-            <button class="stepper__btn" data-act="banderas-minus">−</button>
-            <span class="stepper__value ${banderasCfg.banderas === 0 ? "empty" : ""}" data-role="banderas-value" style="font-size:22px">🚩${banderasCfg.banderas}</span>
-            <button class="stepper__btn" data-act="banderas-plus">+</button>
-          </div>
-        </div>
-        ` : ""}
-        ${state.bets.threePutt.enabled && state.bets.threePutt.participantes.includes(p.id) ? `
-        <div class="player-row__controls" style="margin-top:8px">
-          <div class="event-toggles">
-            <button class="event-toggle ${banderasCfg.threePutt ? "active" : ""}" data-act="threeputt">3-putt</button>
-          </div>
-        </div>
-        ` : ""}
-        ${state.bets.chupes.enabled && state.bets.chupes.participantes.includes(p.id) ? `
-        <div class="player-row__controls" style="margin-top:8px">
-          <div class="stepper">
-            <button class="stepper__btn" data-act="chupes-minus">−</button>
-            <span class="stepper__value ${banderasCfg.chupes === 0 ? "empty" : ""}" data-role="chupes-value" style="font-size:22px">🥤${banderasCfg.chupes}</span>
-            <button class="stepper__btn" data-act="chupes-plus">+</button>
-          </div>
-        </div>
-        ` : ""}
+        ${scoreChipsHtml(bruto, par)}
+        ${extrasHtml ? `<div class="player-row__extras">${extrasHtml}</div>` : ""}
       </div>
     `);
 
@@ -793,17 +915,24 @@ function renderHoleScreen(state, onChange) {
       return state.scores[p.id][h];
     }
 
-    row.querySelector('[data-act="minus"]').addEventListener("click", () => {
-      const cur = currentBruto();
-      const next = cur === null ? Math.max(1, par - 1) : Math.max(1, cur - 1);
-      state.scores[p.id][h] = next;
-      onChange(state);
-    });
-    row.querySelector('[data-act="plus"]').addEventListener("click", () => {
-      const cur = currentBruto();
-      const next = cur === null ? par : cur + 1;
-      state.scores[p.id][h] = next;
-      onChange(state);
+    // Botones de golpe relativos al par. Tocar el que ya está marcado lo
+    // borra (para corregir un toque equivocado). Los chips "−"/"+" de las
+    // orillas cubren resultados raros (albatros, triple bogey o peor).
+    row.querySelectorAll("[data-score]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cur = currentBruto();
+        const tipo = btn.dataset.score;
+        let next;
+        if (tipo === "menos") next = Math.max(1, cur !== null && cur < par - 2 ? cur - 1 : par - 3);
+        else if (tipo === "mas") next = cur !== null && cur > par + 2 ? cur + 1 : par + 3;
+        else {
+          const valor = parseInt(tipo);
+          next = cur === valor ? null : valor;
+        }
+        registrarCambioDeHoyo(state, h, onChange, () => {
+          state.scores[p.id][h] = next;
+        });
+      });
     });
     row.querySelector('[data-act="metida"]').addEventListener("click", () => {
       state.metidas[p.id][h] = !state.metidas[p.id][h];
@@ -860,6 +989,13 @@ function renderHoleScreen(state, onChange) {
     wrap.appendChild(row);
   });
 
+  // Si ya están todos los golpes pero falta algo del hoyo (oyes / loba),
+  // avisamos aquí: el avance automático espera a que se complete.
+  const pendientes = pendientesDelHoyo(state, h);
+  if (pendientes.length > 0 && state.players.every((p) => state.scores[p.id][h] !== null)) {
+    wrap.appendChild(el(`<p class="hole-pending">Falta marcar ${pendientes.join(" y ")} para pasar al siguiente hoyo ↓</p>`));
+  }
+
   // Oyes: UNA sola marca por hoyo par 3 (orden de cercanía a la bandera).
   // Todas las modalidades que usan oyes (individuales, foursome, rotación,
   // skins, loba) derivan solas quién gana comparando estas posiciones —
@@ -872,39 +1008,60 @@ function renderHoleScreen(state, onChange) {
 
   if (isPar3 && usaOyesAlgunaModalidad) {
     wrap.appendChild(el(`<p class="section-divider" style="font-size:15px">Oyes — orden de cercanía a la bandera</p>`));
-    const oyesCard = el(`<div class="card"></div>`);
+    // Se toca a los jugadores en orden de cercanía: el primero queda 1º, el
+    // siguiente 2º, etc. Tocar a alguien ya marcado lo quita y los de atrás
+    // suben un lugar. "Nadie" deja constancia de que nadie quedó en green
+    // (sin ganador), para que el hoyo no se quede esperando el oyes.
     if (!state.oyesOrden[h]) state.oyesOrden[h] = {};
     const ordenHoyo = state.oyesOrden[h];
-    const nJugadores = state.players.length;
-    state.players.forEach((p) => {
-      const posicionActual = ordenHoyo[p.id] || "";
-      const opciones = [`<option value="" ${posicionActual === "" ? "selected" : ""}>— sin marcar —</option>`];
-      for (let pos = 1; pos <= nJugadores; pos++) {
-        opciones.push(`<option value="${pos}" ${posicionActual === pos ? "selected" : ""}>${pos}º</option>`);
-      }
-      const row = el(`
-        <div class="field" style="margin-bottom:10px">
-          <label style="font-size:15px">${p.name}</label>
-          <select data-oyes-player="${p.id}" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:12px 10px;color:var(--crema);font-size:17px;font-weight:600">
-            ${opciones.join("")}
-          </select>
+    const nadie = ordenHoyo.nadie === true;
+    const oyesCard = el(`
+      <div class="card oyes-card">
+        <p class="help-text" style="margin:0 0 10px">Toca a los jugadores en orden: el más cerca primero.</p>
+        <div class="oyes-picks">
+          ${state.players.map((p) => {
+            const pos = ordenHoyo[p.id];
+            return `
+              <button class="oyes-pick ${pos ? "active" : ""} ${pos === 1 ? "first" : ""}" data-oyes-player="${p.id}">
+                <span class="oyes-pick__pos">${pos ? `${pos}º` : ""}</span>
+                <span class="oyes-pick__name">${p.name}</span>
+              </button>`;
+          }).join("")}
         </div>
-      `);
-      row.querySelector("select").addEventListener("change", (e) => {
-        if (e.target.value === "") {
-          delete ordenHoyo[p.id];
-        } else {
-          const nuevaPos = parseInt(e.target.value);
-          // si esa posición ya la tenía otro jugador, se la quitamos (swap)
-          // para no dejar 2 personas en el mismo lugar
-          Object.keys(ordenHoyo).forEach((otroId) => {
-            if (ordenHoyo[otroId] === nuevaPos) delete ordenHoyo[otroId];
-          });
-          ordenHoyo[p.id] = nuevaPos;
-        }
-        onChange(state);
+        <div class="oyes-actions">
+          <button class="event-toggle ${nadie ? "active" : ""}" data-act="oyes-nadie">Nadie en green</button>
+          <button class="event-toggle" data-act="oyes-reset">Volver a escoger</button>
+        </div>
+      </div>
+    `);
+    oyesCard.querySelectorAll("[data-oyes-player]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.oyesPlayer);
+        registrarCambioDeHoyo(state, h, onChange, () => {
+          delete ordenHoyo.nadie;
+          const pos = ordenHoyo[id];
+          if (pos) {
+            delete ordenHoyo[id];
+            Object.keys(ordenHoyo).forEach((otroId) => {
+              if (ordenHoyo[otroId] > pos) ordenHoyo[otroId] -= 1;
+            });
+          } else {
+            const ocupadas = Object.keys(ordenHoyo).filter((k) => typeof ordenHoyo[k] === "number").length;
+            ordenHoyo[id] = ocupadas + 1;
+          }
+        });
       });
-      oyesCard.appendChild(row);
+    });
+    oyesCard.querySelector('[data-act="oyes-nadie"]').addEventListener("click", () => {
+      registrarCambioDeHoyo(state, h, onChange, () => {
+        Object.keys(ordenHoyo).forEach((k) => delete ordenHoyo[k]);
+        if (!nadie) ordenHoyo.nadie = true;
+      });
+    });
+    oyesCard.querySelector('[data-act="oyes-reset"]').addEventListener("click", () => {
+      registrarCambioDeHoyo(state, h, onChange, () => {
+        Object.keys(ordenHoyo).forEach((k) => delete ordenHoyo[k]);
+      });
     });
     wrap.appendChild(oyesCard);
   }
@@ -941,15 +1098,17 @@ function renderHoleScreen(state, onChange) {
       </div>
     `);
     lobaCard.querySelector('[data-role="loba-select"]').addEventListener("change", (e) => {
-      const val = e.target.value ? parseInt(e.target.value) : null;
-      cfg.loba = val;
-      if (cfg.companero === val) cfg.companero = null;
-      onChange(state);
+      registrarCambioDeHoyo(state, h, onChange, () => {
+        const val = e.target.value ? parseInt(e.target.value) : null;
+        cfg.loba = val;
+        if (cfg.companero === val) cfg.companero = null;
+      });
     });
     lobaCard.querySelector('[data-role="comp-select"]').addEventListener("change", (e) => {
-      const val = e.target.value;
-      cfg.companero = val === "" ? null : val === "solo" ? "solo" : parseInt(val);
-      onChange(state);
+      registrarCambioDeHoyo(state, h, onChange, () => {
+        const val = e.target.value;
+        cfg.companero = val === "" ? null : val === "solo" ? "solo" : parseInt(val);
+      });
     });
     const multInput = lobaCard.querySelector('[data-role="multiplicador"]');
     if (multInput) {

@@ -614,3 +614,243 @@ input:focus-visible {
   margin-top: -4px;
   margin-bottom: 12px;
 }
+
+/* ---------------- BOTONES DE GOLPE (relativos al par) ---------------- */
+
+.player-row__top .event-toggles {
+  margin-left: auto;
+}
+
+.score-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.score-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 58px;
+  padding: 6px 2px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--linea);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background 0.12s, transform 0.08s;
+}
+
+.score-chip:active {
+  transform: scale(0.95);
+}
+
+.score-chip__num {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.score-chip__label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.score-chip--side {
+  flex: 0 0 34px;
+}
+
+.score-chip--side.active {
+  flex-basis: 54px;
+}
+
+.score-chip--under .score-chip__label { color: var(--dorado); }
+.score-chip--over .score-chip__label { color: #e8a897; }
+
+.score-chip--even.active {
+  background: var(--crema);
+  border-color: var(--crema);
+  color: var(--verde-campo-oscuro);
+}
+
+.score-chip--under.active {
+  background: var(--dorado);
+  border-color: var(--dorado);
+  color: var(--verde-campo-oscuro);
+}
+
+.score-chip--over.active {
+  background: var(--terracota);
+  border-color: var(--terracota);
+  color: var(--crema);
+}
+
+.score-chip.active .score-chip__label {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.player-row__extras {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stepper--compact .stepper__btn {
+  width: 34px;
+  height: 34px;
+  font-size: 17px;
+}
+
+.stepper--compact .stepper__value {
+  width: auto;
+  min-width: 40px;
+  font-size: 16px;
+}
+
+.stepper--compact .stepper__value.empty {
+  font-size: 16px;
+}
+
+.hole-pending {
+  font-size: 12px;
+  color: var(--dorado);
+  text-align: center;
+  margin: 4px 0 0;
+}
+
+/* ---------------- AVISO DE AVANCE AUTOMÁTICO ---------------- */
+
+.advance-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 448px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--verde-campo);
+  border: 1px solid var(--dorado);
+  box-shadow: 0 8px 24px var(--sombra);
+  font-size: 14px;
+  z-index: 60;
+  overflow: hidden;
+  animation: advance-in 0.18s ease-out;
+}
+
+.advance-toast b {
+  color: var(--dorado);
+}
+
+.advance-toast button {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: rgba(244, 239, 227, 0.1);
+}
+
+.advance-toast__bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--dorado);
+  transform-origin: left;
+  animation: advance-bar 1.6s linear forwards;
+}
+
+@keyframes advance-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes advance-bar {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ---------------- OYES (tocar en orden de cercanía) ---------------- */
+
+.oyes-picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.oyes-pick {
+  min-height: 56px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--linea);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background 0.12s, transform 0.08s;
+}
+
+.oyes-pick:active {
+  transform: scale(0.95);
+}
+
+.oyes-pick__pos {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  min-height: 18px;
+}
+
+.oyes-pick__name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oyes-pick.active {
+  background: rgba(212, 165, 64, 0.22);
+  border-color: var(--dorado);
+}
+
+.oyes-pick.first {
+  background: var(--dorado);
+  color: var(--verde-campo-oscuro);
+}
+
+.oyes-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.oyes-actions .event-toggle {
+  flex: 1;
+  padding: 10px;
+  font-size: 12px;
+}
