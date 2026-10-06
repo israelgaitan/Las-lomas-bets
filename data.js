@@ -683,3 +683,53 @@ function getActiveCourse(state) {
   return state.courses.find((c) => c.id === state.round.courseId) || state.courses[0];
 }
 
+
+// "Apuestas favoritas": al arrancar una ronda nueva, conserva qué se juega
+// y los montos de la ronda anterior, para no volver a escribirlos cada vez.
+// Solo copia montos, encendido/apagado y formato de foursome — nunca
+// participantes, parejas ni partidos 1v1, porque esos dependen de quién
+// juega hoy (y casi nunca son las mismas personas).
+function conservarApuestasFavoritas(prevBets, freshBets, hoyoInicial) {
+  if (!prevBets) return;
+  Object.keys(freshBets).forEach((key) => {
+    if (prevBets[key] && typeof prevBets[key].enabled === "boolean") {
+      freshBets[key].enabled = prevBets[key].enabled;
+    }
+  });
+  const fsPrev = prevBets.foursome;
+  const fsNew = freshBets.foursome;
+  if (fsPrev) {
+    if (fsPrev.formato) fsNew.formato = fsPrev.formato;
+    (fsPrev.crosses || []).forEach((c, i) => {
+      if (!fsNew.crosses[i]) return;
+      fsNew.crosses[i].montoIda = c.montoIda;
+      fsNew.crosses[i].montoVuelta = c.montoVuelta;
+    });
+    // de los segmentos (round robin / normal) solo pasan los montos; las
+    // parejas se vuelven a armar con los jugadores de hoy
+    const soloMontos = (fsPrev.segmentos || []).map((s) => ({
+      id: s.id,
+      monto: s.monto,
+      montoIda: s.montoIda,
+      montoVuelta: s.montoVuelta,
+    }));
+    if (fsNew.formato === "cruzado") {
+      soloMontos.forEach((s, i) => {
+        if (fsNew.segmentos[i] && typeof s.monto === "number") fsNew.segmentos[i].monto = s.monto;
+      });
+    } else {
+      fsNew.segmentos = generarSegmentosRotacion(fsNew.participantes4, soloMontos, hoyoInicial, fsNew.formato === "roundRobin");
+    }
+  }
+  if (prevBets.skins) freshBets.skins.montoPorHoyo = prevBets.skins.montoPorHoyo;
+  if (prevBets.stableford) {
+    freshBets.stableford.montoIda = prevBets.stableford.montoIda;
+    freshBets.stableford.montoVuelta = prevBets.stableford.montoVuelta;
+    freshBets.stableford.montoTotal = prevBets.stableford.montoTotal;
+  }
+  ["loba", "banderas", "threePutt", "chupes"].forEach((key) => {
+    if (prevBets[key] && typeof prevBets[key].monto === "number") {
+      freshBets[key].monto = prevBets[key].monto;
+    }
+  });
+}
