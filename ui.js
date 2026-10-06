@@ -467,7 +467,7 @@ function renderConfigScreen(state, onChange, irA) {
     const avisoRespaldo = el(`
       <div class="card" style="border:1px solid var(--terracota);margin-bottom:10px">
         <p style="margin:0 0 8px;font-weight:600">Llevas ${rondasSinRespaldo} rondas sin exportar un respaldo</p>
-        <p class="help-text" style="margin:0 0 10px">Todo ese historial vive solo en este teléfono. Exporta ahora para no arriesgarte a perderlo.</p>
+        <p class="help-text" style="margin:0 0 10px">Exporta un respaldo para no perderlo.</p>
         <button data-role="exportar-aviso" class="btn btn-primary btn-small" style="width:100%">Exportar respaldo ahora</button>
       </div>
     `);
@@ -476,7 +476,6 @@ function renderConfigScreen(state, onChange, irA) {
   }
   /* ---- MIS AMIGOS (lista permanente + biblia) ---- */
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Mis amigos</h2>`));
-  wrap.appendChild(el(`<p class="help-text">Toca la ⭐ junto a tu nombre para salir ya elegido en cada ronda nueva. La "biblia" es un número de referencia que ajustas a mano.</p>`));
 
   const friendsCard = el(`<div class="card"></div>`);
   if (state.friends.length === 0) {
@@ -542,8 +541,8 @@ function renderConfigScreen(state, onChange, irA) {
   const esDatoReal = ["lomas", "atlas", "canadas"].includes(course.id);
   const avisoTexto = esDatoReal
     ? `${course.name} ya tiene par y hándicap por hoyo 100% reales, de la tarjeta oficial del club.`
-    : `${course.name} todavía tiene una plantilla genérica de par y hándicap por hoyo. Ajústala abajo con su tarjeta oficial la primera vez que juegues ahí, para que los golpes de ventaja salgan correctos.`;
-  wrap.appendChild(el(`<p class="help-text">${avisoTexto}</p>`));
+    : `⚠️ Par y hándicap genéricos. Ajústalos abajo.`;
+  if (!esDatoReal) wrap.appendChild(el(`<p class="help-text">${avisoTexto}</p>`));
 
   const addCourseBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-bottom:8px">+ Agregar cancha nueva</button>`);
   addCourseBtn.addEventListener("click", () => agregarCancha(state, onChange));
@@ -593,7 +592,7 @@ function renderConfigScreen(state, onChange, irA) {
   wrap.appendChild(el(`<h2 class="screen-title" style="margin-top:24px">Respaldo</h2>`));
   const respaldoCard = el(`
     <div class="card">
-      <p class="help-text" style="margin-top:0">Todo lo que metes a mano (jugadores, hándicaps, montos, historial de rondas, amigos) vive solo en este teléfono. Si borras datos de Safari, cambias de teléfono, o algo falla, se pierde para siempre — exporta un respaldo de vez en cuando para no arriesgarte.</p>
+      <p class="help-text" style="margin-top:0">Tus datos viven solo en este teléfono. Exporta un respaldo seguido.</p>
       <button class="btn btn-ghost btn-small" data-role="exportar" style="width:100%;margin-bottom:8px">Exportar respaldo</button>
       <button class="btn btn-ghost btn-small" data-role="importar" style="width:100%">Restaurar desde un respaldo</button>
       <input type="file" accept="application/json,.json" data-role="import-file" style="display:none" />
@@ -1063,7 +1062,7 @@ function renderHoleScreen(state, onChange) {
     const nadie = ordenHoyo.nadie === true;
     const oyesCard = el(`
       <div class="card oyes-card">
-        <p class="help-text" style="margin:0 0 10px">Toca a los jugadores en orden: el más cerca primero.</p>
+        <p class="help-text" style="margin:0 0 10px">Más cerca primero.</p>
         <div class="oyes-picks">
           ${state.players.map((p) => {
             const pos = ordenHoyo[p.id];
@@ -1140,7 +1139,6 @@ function renderHoleScreen(state, onChange) {
           <label>Multiplicador del hoyo ${h + 1} (puedes subirlo manualmente cuando decidan, ej: irse solo)</label>
           <input type="number" min="1" step="1" value="${cfg.multiplicador}" data-role="multiplicador" />
         </div>
-        <p class="help-text">Monto de este hoyo = monto base de loba × este número. Déjalo en 1 para jugarlo normal.</p>
       </div>
     `);
     lobaCard.querySelector('[data-role="loba-select"]').addEventListener("change", (e) => {
@@ -1333,7 +1331,7 @@ function renderBetsScreen(state, onChange) {
   const indCard = el(`<div class="card"></div>`);
 
   if (state.bets.individuales.matches.length === 0) {
-    indCard.appendChild(el(`<p class="help-text">Aún no hay partidos 1v1. Genera todos vs todos arriba, o agrega uno manualmente abajo.</p>`));
+    indCard.appendChild(el(`<p class="help-text">Sin partidos todavía.</p>`));
   }
 
   resumen.individualesResults.forEach((r, idx) => {
@@ -1489,7 +1487,6 @@ function renderBetsScreen(state, onChange) {
           <option value="roundRobin" ${state.bets.foursome.formato === "roundRobin" ? "selected" : ""}>Foursome Round Robin (4 jugadores, cambia de pareja cada 6 hoyos)</option>
           <option value="normal" ${state.bets.foursome.formato === "normal" ? "selected" : ""}>Foursome normal (4 jugadores, misma pareja los 18 hoyos)</option>
         </select>
-        <p class="help-text" style="margin:8px 0 0">Solo uno está activo a la vez. Cambiar de formato no borra la configuración de los otros 2, por si regresas a usarlos.</p>
       </div>
     `);
     formatoCard.querySelector('[data-role="fs-formato"]').addEventListener("change", (e) => {
@@ -1556,7 +1553,7 @@ function renderBetsScreen(state, onChange) {
 
       const baseCard = el(`
         <div class="card" style="margin-top:10px">
-          <p class="card__subtitle" style="margin-bottom:8px">${nParticipantesActual === 4 ? "Elige quiénes son hoy una pareja; los otros 2 forman la pareja rival." : "Se rifan antes de jugar: elige quiénes son hoy la pareja base. Los otros 3 forman las 3 combinaciones rivales automáticamente."}</p>
+          <p class="card__subtitle" style="margin-bottom:8px">${nParticipantesActual === 4 ? "Elige una pareja." : "Elige la pareja base."}</p>
           <div class="field-row">
             <div class="field">
               <label>Base 1</label>
@@ -1664,8 +1661,8 @@ function renderBetsScreen(state, onChange) {
           });
           segCard.appendChild(row);
         });
-        if (rotar) {
-          segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Los bloques siguen el orden de juego${state.round.hoyoInicial === 10 ? " (arrancando por el 10)" : ""}. El monto de cada bloque se ajusta abajo, junto a su resultado.</p>`));
+        if (rotar && state.round.hoyoInicial === 10) {
+          segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Arrancando por el 10.</p>`));
         }
         wrap.appendChild(segCard);
       }
@@ -1693,7 +1690,6 @@ function renderBetsScreen(state, onChange) {
             <input type="number" value="${cross.montoVuelta}" data-role="vuelta" />
           </div>
         </div>
-        <p class="help-text" style="margin-top:-6px">Mismo monto aplica a bola alta y bola baja.</p>
         <div class="match-row" style="border-top:1px solid var(--linea);padding-top:10px">
           <span class="match-row__names">Saldo del cruce</span>
           <span class="match-row__amount ${moneyClass(r.saldoTotal)}">${fmtMoney(Math.abs(r.saldoTotal))} ${r.saldoTotal === 0 ? "" : (r.saldoTotal > 0 ? "a favor de " + baseNames : "a favor de " + rivalNames)}</span>
@@ -1742,7 +1738,6 @@ function renderBetsScreen(state, onChange) {
               <input type="number" value="${seg.montoVuelta}" data-role="monto-vuelta" />
             </div>
           </div>
-          <p class="help-text" style="margin-top:-6px">"1-9" y "10-18" son según el orden real en que los juegan, no el número físico del hoyo.</p>
           ` : `
           <div class="field">
             <label>$ por hoyo</label>
@@ -1819,7 +1814,6 @@ function renderBetsScreen(state, onChange) {
     });
     skinsCard.appendChild(row);
   });
-  skinsCard.appendChild(el(`<p class="help-text" style="margin:4px 0 8px">Cada hoyo ganado limpio lo pagan solo los demás participantes de skins. La ventaja se calcula entre ellos, no contra todo el grupo.</p>`));
 
   state.players.filter((p) => state.bets.skins.participantes.includes(p.id)).forEach((p) => {
     const ganado = resumen.skinsResult.totalesPorJugador[p.id] || 0;
@@ -1831,7 +1825,7 @@ function renderBetsScreen(state, onChange) {
     `));
   });
   if (resumen.skinsResult.montoPendiente > 0) {
-    skinsCard.appendChild(el(`<p class="help-text">Monto acumulado pendiente (empate de 3+, se suma al próximo hoyo): ${fmtMoney(resumen.skinsResult.montoPendiente)}</p>`));
+    skinsCard.appendChild(el(`<p class="help-text">Acumulado: ${fmtMoney(resumen.skinsResult.montoPendiente)}</p>`));
   }
   wrap.appendChild(skinsCard);
   }
@@ -1938,7 +1932,6 @@ function renderBetsScreen(state, onChange) {
       });
       sfCard.appendChild(row);
     });
-    sfCard.appendChild(el(`<p class="help-text" style="margin:4px 0 0">Los premios los pelean solo entre ellos, y la ventaja se calcula entre ellos, no contra todo el grupo.</p>`));
     wrap.appendChild(sfCard);
 
     const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
@@ -2011,7 +2004,6 @@ function renderBetsScreen(state, onChange) {
       participantesCard.appendChild(row);
     });
     wrap.appendChild(participantesCard);
-    wrap.appendChild(el(`<p class="help-text">Quien no participa no cobra ni paga nada; el resto se reparte solo entre quienes sí juegan.</p>`));
 
     const card = el(`
       <div class="card">
@@ -2083,7 +2075,7 @@ function sumaGolpesBrutos(state, playerId, desde, hasta) {
 function apendHistorialDeRondas(wrap, state) {
   wrap.appendChild(el(`<p class="section-divider">Tu historial de rondas guardadas</p>`));
   if (state.roundsHistory.length === 0) {
-    wrap.appendChild(el(`<p class="help-text">Todavía no tienes ninguna ronda guardada aquí. Se guarda sola cada vez que le das "Resetear ronda" con golpes ya capturados en esa ronda.</p>`));
+    wrap.appendChild(el(`<p class="help-text">Aún no hay rondas guardadas.</p>`));
     return;
   }
   const totalAcumulado = state.roundsHistory.reduce((sum, r) => sum + r.balanceYo, 0);
@@ -2176,7 +2168,6 @@ function apendHistorialDeRondas(wrap, state) {
       histCard.appendChild(rondaBlock);
     });
   wrap.appendChild(histCard);
-  wrap.appendChild(el(`<p class="help-text">Toca una ronda para ver el desglose de cada jugador. Se guarda automáticamente cada vez que tocas "Resetear ronda" con golpes ya registrados.</p>`));
 
   const exportCsvBtn = el(`<button class="btn btn-ghost btn-small" style="width:100%;margin-top:8px">Exportar historial a Excel</button>`);
   exportCsvBtn.addEventListener("click", () => {
@@ -2421,7 +2412,6 @@ function renderSummaryScreen(state, onChange) {
 
   scrollWrap.appendChild(table);
   wrap.appendChild(scrollWrap);
-  wrap.appendChild(el(`<p class="help-text">Desliza la tabla hacia los lados para ver todos los hoyos. Verde = bajo par, rojo = sobre par.${state.bets.stableford.enabled ? " La fila \"pts\" son los puntos Stableford de cada hoyo." : ""}${state.bets.foursome.enabled ? " La fila de Foursome son las unidades que se ganan/pierden ese hoyo." : ""}${state.bets.skins.enabled ? " La fila de Skins es lo que cobra el ganador de ese hoyo (\"acum\" = empate de 3+, se acumula)." : ""}</p>`));
 
   wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
