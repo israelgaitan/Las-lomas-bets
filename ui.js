@@ -5,7 +5,7 @@
 function fmtMoney(n) {
   const rounded = Math.round(n);
   const sign = rounded < 0 ? "-" : "";
-  const abs = Math.abs(rounded).toLocaleString("es-CO");
+  const abs = Math.abs(rounded).toLocaleString("es-MX");
   return `${sign}$${abs}`;
 }
 
@@ -2233,6 +2233,27 @@ function renderSummaryScreen(state, onChange) {
       </div>
     `));
   });
+
+  // Compartir el resultado al grupo (WhatsApp u otra app). Solo incluye
+  // a los jugadores que sí tienen golpes capturados en esta ronda, para no
+  // mandar "Jugador 5 $0" cuando juegan 4.
+  const btnCompartir = el(`<button class="btn btn-primary" style="width:100%;margin:12px 0 4px">📲 Compartir resultado</button>`);
+  btnCompartir.addEventListener("click", () => {
+    const course = getActiveCourse(state);
+    const fecha = new Date().toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+    const conGolpes = sorted.filter((p) => state.scores[p.id].some((s) => s !== null));
+    const lineas = conGolpes.map((p) => {
+      const bal = resumen.balances[p.id];
+      return `${p.name}: ${bal > 0 ? "+" : ""}${fmtMoney(bal)}`;
+    });
+    const texto = `⛳ Las Lomas Bets · ${course.name} · ${fecha}\n${played}/18 hoyos\n\n${lineas.join("\n")}`;
+    if (navigator.share) {
+      navigator.share({ text: texto }).catch(() => {});
+    } else {
+      window.open("https://wa.me/?text=" + encodeURIComponent(texto), "_blank");
+    }
+  });
+  wrap.appendChild(btnCompartir);
 
   wrap.appendChild(el(`<p class="section-divider">Desglose por modalidad</p>`));
 
