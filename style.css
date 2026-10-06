@@ -789,3 +789,68 @@ input:focus-visible {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }
 }
+
+/* ---------------- OYES (tocar en orden de cercanía) ---------------- */
+
+.oyes-picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.oyes-pick {
+  min-height: 56px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--linea);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background 0.12s, transform 0.08s;
+}
+
+.oyes-pick:active {
+  transform: scale(0.95);
+}
+
+.oyes-pick__pos {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  min-height: 18px;
+}
+
+.oyes-pick__name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oyes-pick.active {
+  background: rgba(212, 165, 64, 0.22);
+  border-color: var(--dorado);
+}
+
+.oyes-pick.first {
+  background: var(--dorado);
+  color: var(--verde-campo-oscuro);
+}
+
+.oyes-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.oyes-actions .event-toggle {
+  flex: 1;
+  padding: 10px;
+  font-size: 12px;
+}
