@@ -2235,14 +2235,23 @@ function renderSummaryScreen(state, onChange) {
   wrap.appendChild(el(`<p class="section-divider">Tarjeta de golf</p>`));
   const course = getActiveCourse(state);
   const par = course.par;
-  const cellStyle = "min-width:28px;text-align:center;padding:6px 2px;font-family:var(--font-mono);font-size:12px;white-space:nowrap";
+  const cellStyle = "min-width:30px;text-align:center;padding:7px 2px;font-family:var(--font-mono);font-size:12px;white-space:nowrap";
   const headerCellStyle = cellStyle + ";opacity:0.6;font-size:10px";
 
   const scoreColor = (bruto, parHoyo) => {
     if (bruto === null || bruto === undefined) return "opacity:0.3";
-    if (bruto < parHoyo) return "color:#7ee787;font-weight:700"; // bajo par
-    if (bruto > parHoyo) return "color:#ff7b72"; // sobre par
+    if (bruto < parHoyo) return "font-weight:700"; // bajo par
+    if (bruto > parHoyo) return ""; // sobre par
     return "color:var(--crema)"; // par exacto
+  };
+
+  // Marca tipo tarjeta clásica: águila (o mejor) = dos círculos azules,
+  // birdie = un círculo rojo, bogey = un cuadrado, doble (o peor) = dos.
+  const marcaScore = (bruto, parHoyo) => {
+    if (bruto === null || bruto === undefined) return "—";
+    const d = bruto - parHoyo;
+    const clase = d <= -2 ? "aguila" : d === -1 ? "birdie" : d === 1 ? "bogey" : d >= 2 ? "doble" : "";
+    return clase ? `<span class="sc-marca sc-marca--${clase}">${bruto}</span>` : `${bruto}`;
   };
 
   const scrollWrap = el(`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px" class="card"></div>`);
@@ -2281,7 +2290,7 @@ function renderSummaryScreen(state, onChange) {
     const vuelta = sumaGolpesBrutos(state, p.id, 9, 18);
     for (let h = 0; h < 18; h++) {
       const bruto = state.scores[p.id][h];
-      fila.appendChild(el(`<td style="${cellStyle};${scoreColor(bruto, par[h])}">${bruto !== null && bruto !== undefined ? bruto : "—"}</td>`));
+      fila.appendChild(el(`<td style="${cellStyle};${scoreColor(bruto, par[h])}">${marcaScore(bruto, par[h])}</td>`));
       if (h === 8) fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${ida.jugados > 0 ? ida.suma : "—"}</td>`));
     }
     fila.appendChild(el(`<td style="${cellStyle};font-weight:700">${vuelta.jugados > 0 ? vuelta.suma : "—"}</td>`));

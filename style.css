@@ -1168,3 +1168,26 @@ input:focus-visible {
   width: 50px;
   font-size: 14px;
 }
+
+/* Marcas de score en la tarjeta de golf (estilo tarjeta clásica) */
+.sc-marca {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  line-height: 1;
+}
+.sc-marca::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  display: none;
+}
+.sc-marca--birdie { border: 1.5px solid #ff7b72; border-radius: 50%; color: #ff7b72; }
+.sc-marca--aguila { border: 1.5px solid #6cb6ff; border-radius: 50%; color: #6cb6ff; }
+.sc-marca--aguila::after { display: block; border: 1.5px solid #6cb6ff; border-radius: 50%; }
+.sc-marca--bogey { border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 2px; }
+.sc-marca--doble { border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 2px; }
+.sc-marca--doble::after { display: block; border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 3px; }
