@@ -15,7 +15,7 @@
    en notar el cambio.
    ============================================================ */
 
-const CACHE_NAME = "llb-cache-v12";
+const CACHE_NAME = "llb-cache-v13";
 
 const ASSETS = [
   "./",
