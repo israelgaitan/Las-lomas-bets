@@ -651,6 +651,9 @@ function claseVsPar(golpes, par) {
   return "over";
 }
 
+// Máximo de golpes que se puede capturar en un hoyo.
+const GOLPES_MAX = 10;
+
 // Fila de botones grandes para el golpe del hoyo: de águila a doble bogey,
 // con chips chicos a los lados para lo que se sale de ese rango.
 function scoreChipsHtml(bruto, par) {
@@ -680,7 +683,20 @@ function scoreChipsHtml(bruto, par) {
       <span class="score-chip__num">${fueraArriba ? bruto : "+"}</span>
       ${fueraArriba ? `<span class="score-chip__label">${nombreVsPar(bruto, par)}</span>` : ""}
     </button>`);
-  return `<div class="score-chips">${partes.join("")}</div>`;
+  // Al tocar "+" se abre esta fila con todos los golpes de triple bogey
+  // hasta el tope, para elegir el bueno de un solo toque.
+  const tope = Math.max(GOLPES_MAX, par + 3);
+  const masAlto = [];
+  for (let v = par + 3; v <= tope; v++) {
+    const activo = bruto === v;
+    masAlto.push(`
+      <button class="score-chip score-chip--over ${activo ? "active" : ""}" data-score="${v}">
+        <span class="score-chip__num">${v}</span>
+        <span class="score-chip__label">${nombreVsPar(v, par)}</span>
+      </button>`);
+  }
+  return `<div class="score-chips">${partes.join("")}</div>
+    <div class="score-chips score-chips--mas" hidden>${masAlto.join("")}</div>`;
 }
 
 /* ---- AVANCE AUTOMÁTICO DE HOYO ---- */
@@ -961,15 +977,20 @@ function renderHoleScreen(state, onChange) {
     }
 
     // Botones de golpe relativos al par. Tocar el que ya está marcado lo
-    // borra (para corregir un toque equivocado). Los chips "−"/"+" de las
-    // orillas cubren resultados raros (albatros, triple bogey o peor).
+    // borra (para corregir un toque equivocado). El chip "−" cubre
+    // albatros; el "+" abre una fila con triple bogey hasta 10 golpes.
     row.querySelectorAll("[data-score]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const cur = currentBruto();
         const tipo = btn.dataset.score;
         let next;
+        if (tipo === "mas") {
+          const fila = row.querySelector(".score-chips--mas");
+          fila.hidden = !fila.hidden;
+          btn.classList.toggle("open", !fila.hidden);
+          return;
+        }
         if (tipo === "menos") next = Math.max(1, cur !== null && cur < par - 2 ? cur - 1 : par - 3);
-        else if (tipo === "mas") next = cur !== null && cur > par + 2 ? cur + 1 : par + 3;
         else {
           const valor = parseInt(tipo);
           next = cur === valor ? null : valor;
