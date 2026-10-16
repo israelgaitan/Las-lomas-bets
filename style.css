@@ -674,6 +674,18 @@ input:focus-visible {
   flex-basis: 54px;
 }
 
+.score-chip--side.open {
+  border-color: var(--terracota);
+}
+
+.score-chips--mas {
+  margin-top: 6px;
+}
+
+.score-chips--mas[hidden] {
+  display: none;
+}
+
 .score-chip--under .score-chip__label { color: var(--dorado); }
 .score-chip--over .score-chip__label { color: #e8a897; }
 
