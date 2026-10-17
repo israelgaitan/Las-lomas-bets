@@ -452,9 +452,11 @@ function generarCrucesForusome(basePlayers, allPlayers, crucesViejos) {
 function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
   if (bruto === null || bruto === undefined) return 0;
   let count = 0;
+  // Se acumulan: un águila también cuenta como birdie, y un hoyo en uno
+  // (o un albatros) cuenta además como águila y birdie.
   if (bruto === 1) count++; // hoyo en uno
-  if (bruto === par - 2 && bruto !== 1) count++; // águila
-  if (bruto === par - 1) count++; // birdie
+  if (bruto <= par - 2) count++; // águila (o mejor)
+  if (bruto <= par - 1) count++; // birdie (o mejor)
   if (esSandy) count++;
   if (esOyes && par === 3) count++;
   if (esMetida) count++; // metida de afuera (chip-in)
@@ -871,8 +873,8 @@ function detectarEventos(bruto, par, esSandy, esOyes, esMetida) {
   if (bruto === null || bruto === undefined) return eventos;
 
   if (bruto === 1) eventos.push(EVENTOS.HOYO_EN_UNO);
-  if (bruto === par - 2 && bruto !== 1) eventos.push(EVENTOS.AGUILA);
-  if (bruto === par - 1) eventos.push(EVENTOS.BIRDIE);
+  if (bruto <= par - 2) eventos.push(EVENTOS.AGUILA);
+  if (bruto <= par - 1) eventos.push(EVENTOS.BIRDIE);
   if (esSandy) eventos.push(EVENTOS.SANDY);
   if (esOyes && par === 3) eventos.push(EVENTOS.OYES);
   if (esMetida) eventos.push(EVENTOS.METIDA);
