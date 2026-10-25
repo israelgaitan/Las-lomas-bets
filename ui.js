@@ -109,9 +109,11 @@ function renderNuevaRondaScreen(state, onChange, irA) {
     </div>
   `));
 
+  // primero qué se juega, así en "¿Quién juega?" solo salen los hándicaps
+  // de las apuestas de hoy
   if (paso === 1) renderPasoDonde(wrap, state, onChange);
-  else if (paso === 2) renderPasoQuien(wrap, state, onChange);
-  else renderPasoQue(wrap, state, onChange);
+  else if (paso === 2) renderPasoQue(wrap, state, onChange);
+  else renderPasoQuien(wrap, state, onChange);
 
   const acciones = el(`
     <div class="wiz-actions">
@@ -236,6 +238,9 @@ function renderPasoQuien(wrap, state, onChange) {
   wrap.appendChild(el(`<h1 class="wiz-title">¿Quién juega?</h1>`));
 
   const hoy = state.players.filter((p) => p.friendId);
+  // solo las apuestas prendidas en el paso anterior (las apagadas igual
+  // copian el número, por si se prenden después en Apuestas)
+  const deHoy = HCP_MODALIDADES.filter((m) => state.bets[m.key].enabled);
   wrap.appendChild(el(`<h2 class="screen-title">Hoy juegan · ${hoy.length} de 5</h2>`));
   if (hoy.length === 0) {
     wrap.appendChild(el(`<p class="help-text">Toca nombres abajo para agregarlos.</p>`));
@@ -244,7 +249,7 @@ function renderPasoQuien(wrap, state, onChange) {
     const friend = state.friends.find((f) => f.id === p.friendId);
     const abierto = hcpDetalleAbierto.has(p.id);
     const propio = p.hcpPropio || {};
-    const distintas = HCP_MODALIDADES.filter((m) => p.hcp[m.key] !== hcpBase(p));
+    const distintas = deHoy.filter((m) => p.hcp[m.key] !== hcpBase(p));
     const resumen = distintas.length === 0
       ? `Igual en todas`
       : distintas.map((m) => `${m.label} ${fmtHcp(p.hcp[m.key])}`).join(" · ");
@@ -253,7 +258,7 @@ function renderPasoQuien(wrap, state, onChange) {
         <div class="hoy-row__main">
           <div class="hoy-row__name">
             <span>${p.name}</span>
-            <button class="hoy-row__link" data-act="detalle">${abierto ? "Ocultar" : resumen + " ›"}</button>
+            ${deHoy.length > 1 ? `<button class="hoy-row__link" data-act="detalle">${abierto ? "Ocultar" : resumen + " ›"}</button>` : ""}
           </div>
           <div class="stepper">
             <button class="stepper__btn" data-act="minus" aria-label="Bajar hándicap">−</button>
@@ -262,9 +267,9 @@ function renderPasoQuien(wrap, state, onChange) {
           </div>
           <button class="hoy-row__quitar" data-act="quitar" aria-label="Quitar a ${p.name} de hoy">✕</button>
         </div>
-        ${abierto ? `
-        <div class="hcp-grid">
-          ${HCP_MODALIDADES.map((m) => `
+        ${abierto && deHoy.length > 1 ? `
+        <div class="hcp-grid" style="grid-template-columns: repeat(${deHoy.length}, minmax(0, 1fr))">
+          ${deHoy.map((m) => `
             <label class="${propio[m.key] ? "propio" : ""}">
               <span>${m.label}</span>
               <input type="number" step="0.1" value="${fmtHcp(p.hcp[m.key])}" data-role="hcp-${p.id}-${m.key}" data-hcp-key="${m.key}" />
@@ -284,7 +289,8 @@ function renderPasoQuien(wrap, state, onChange) {
     const baseInput = row.querySelector(".hcp-base");
     baseInput.addEventListener("input", (e) => { fijarBase(parseFloat(e.target.value) || 0); onChange(state, { skipRender: true }); });
     baseInput.addEventListener("change", () => onChange(state));
-    row.querySelector('[data-act="detalle"]').addEventListener("click", () => {
+    const detalle = row.querySelector('[data-act="detalle"]');
+    if (detalle) detalle.addEventListener("click", () => {
       if (abierto) hcpDetalleAbierto.delete(p.id);
       else hcpDetalleAbierto.add(p.id);
       onChange(state);
