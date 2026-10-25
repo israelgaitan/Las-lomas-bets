@@ -2430,16 +2430,23 @@ function renderSummaryScreen(state, onChange) {
     table.appendChild(fila);
   };
 
-  // Individuales: una fila por partido, desde el punto de vista del primer
-  // jugador. Cada hoyo enseña cómo va el partido ACUMULADO hasta ese hoyo
-  // (en match play: +1/-1 por hoyo ganado, empate no mueve), siguiendo el
-  // orden de juego real por si se sale por el 10.
+  // Individuales y foursome: una fila por partido/cruce, desde el punto de
+  // vista del primer jugador (o de la base). Cada hoyo enseña cómo va el
+  // partido ACUMULADO hasta ese hoyo (en match play: +1/-1 por hoyo ganado,
+  // empate no mueve), siguiendo el orden de juego real por si se sale por
+  // el 10. Si la apuesta sube (ej. $100 ida y $200 vuelta), la cuenta
+  // vuelve a empezar desde 0 donde cambia el monto; si se queda igual,
+  // corre los 18 hoyos seguida.
   const ordenJuego = ordenDeJuego(state.round.hoyoInicial);
-  const acumularEnOrden = (valores) => {
+  const acumularEnOrden = (valores, montos) => {
     const acum = new Array(18).fill(null);
     let corrida = 0;
+    let montoAnterior = null;
     ordenJuego.forEach((h) => {
       if (valores[h] === null) return;
+      const monto = montos ? montos[h] : null;
+      if (montoAnterior !== null && monto !== montoAnterior) corrida = 0;
+      montoAnterior = monto;
       corrida += valores[h];
       acum[h] = corrida;
     });
@@ -2449,33 +2456,25 @@ function renderSummaryScreen(state, onChange) {
     resumen.individualesResults.forEach((r) => {
       const esMatchPlay = r.modo === "matchPlay";
       const valores = [];
+      const montos = [];
       for (let h = 0; h < 18; h++) {
         const hr = r.holeResults[h];
-        if (!hr || !hr.jugado) { valores.push(null); continue; }
+        if (!hr || !hr.jugado) { valores.push(null); montos.push(null); continue; }
         if (esMatchPlay) valores.push(hr.ganadorHoyo === r.a ? 1 : hr.ganadorHoyo === r.b ? -1 : 0);
         else valores.push(hr.diffUnidades);
+        montos.push(hr.montoHoyo);
       }
-      agregarFilaUnidades(`${playerName(state, r.a)} vs ${playerName(state, r.b)}`, valores, acumularEnOrden(valores));
+      // en match play se juega un solo monto por todo el partido: corrida
+      agregarFilaUnidades(`${playerName(state, r.a)} vs ${playerName(state, r.b)}`, valores, acumularEnOrden(valores, esMatchPlay ? null : montos));
     });
   }
   if (state.bets.foursome.enabled) {
     resumen.foursomeResults.forEach((r) => {
       const baseIniciales = r.base.map((id) => playerName(state, id)).join("+");
       const rivalIniciales = r.rival.map((id) => playerName(state, id)).join("+");
-      const filaFs = el(`<tr style="border-top:1px solid var(--linea)"></tr>`);
-      filaFs.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600;font-size:11px">${baseIniciales} vs ${rivalIniciales}</td>`));
-      let out = 0, outJug = 0, inn = 0, inJug = 0;
-      for (let h = 0; h < 18; h++) {
-        const hr = r.holeResults[h];
-        const val = hr && hr.jugado ? hr.diffUnidades : null;
-        const color = val === null ? "opacity:0.3" : val > 0 ? "color:#7ee787" : val < 0 ? "color:#ff7b72" : "color:var(--crema)";
-        filaFs.appendChild(el(`<td style="${cellStyle};${color}">${val !== null ? (val > 0 ? "+" : "") + val : "—"}</td>`));
-        if (val !== null) { if (h < 9) { out += val; outJug++; } else { inn += val; inJug++; } }
-        if (h === 8) filaFs.appendChild(el(`<td style="${extraCellStyle}">${outJug > 0 ? (out > 0 ? "+" : "") + out : "—"}</td>`));
-      }
-      filaFs.appendChild(el(`<td style="${extraCellStyle}">${inJug > 0 ? (inn > 0 ? "+" : "") + inn : "—"}</td>`));
-      filaFs.appendChild(el(`<td style="${extraCellStyle}">${(outJug + inJug) > 0 ? (out + inn > 0 ? "+" : "") + (out + inn) : "—"}</td>`));
-      table.appendChild(filaFs);
+      const valores = r.holeResults.map((hr) => (hr && hr.jugado ? hr.diffUnidades : null));
+      const montos = r.holeResults.map((hr) => (hr && hr.jugado ? hr.montoHoyo : null));
+      agregarFilaUnidades(`${baseIniciales} vs ${rivalIniciales}`, valores, acumularEnOrden(valores, montos));
     });
   }
   if (state.bets.skins.enabled) {
