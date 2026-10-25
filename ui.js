@@ -67,6 +67,8 @@ function elegirAmigoHoy(state, f) {
   slotLibre.name = f.name;
   slotLibre.friendId = f.id;
   slotLibre.hcp = { ...f.hcp };
+  slotLibre.hcpBase = f.hcpBase;
+  slotLibre.hcpPropio = { ...(f.hcpPropio || {}) };
   // si este amigo es "tú" (⭐), este lugar pasa a ser "quién soy yo" para
   // el historial — así el historial y "cuánto le he ganado a cada quien"
   // se calculan de la persona correcta.
@@ -87,7 +89,10 @@ function quitarAmigoHoy(state, friendId) {
 // para que la próxima ronda ya salga con el número nuevo.
 function guardarHcpEnAmigo(state, p) {
   const friend = state.friends.find((f) => f.id === p.friendId);
-  if (friend) friend.hcp = { ...p.hcp };
+  if (!friend) return;
+  friend.hcp = { ...p.hcp };
+  friend.hcpBase = hcpBase(p);
+  friend.hcpPropio = { ...(p.hcpPropio || {}) };
 }
 
 function fmtHcp(n) {
@@ -213,6 +218,20 @@ function agregarCancha(state, onChange) {
 }
 
 /* ---- PASO 2: quién juega hoy y con qué hándicap ---- */
+// Hándicap base del jugador (el número grande). Las modalidades lo copian
+// solas, salvo las que se cambiaron a mano ("propias").
+function hcpBase(p) {
+  return p.hcpBase !== undefined ? p.hcpBase : p.hcp.individuales;
+}
+
+// Vuelve a copiar el base a cada modalidad que no se cambió a mano.
+function copiarHcpBase(p) {
+  const propio = p.hcpPropio || {};
+  HCP_MODALIDADES.forEach((m) => {
+    if (!propio[m.key]) p.hcp[m.key] = hcpBase(p);
+  });
+}
+
 function renderPasoQuien(wrap, state, onChange) {
   wrap.appendChild(el(`<h1 class="wiz-title">¿Quién juega?</h1>`));
 
@@ -224,16 +243,21 @@ function renderPasoQuien(wrap, state, onChange) {
   hoy.forEach((p) => {
     const friend = state.friends.find((f) => f.id === p.friendId);
     const abierto = hcpDetalleAbierto.has(p.id);
+    const propio = p.hcpPropio || {};
+    const distintas = HCP_MODALIDADES.filter((m) => p.hcp[m.key] !== hcpBase(p));
+    const resumen = distintas.length === 0
+      ? `Igual en todas`
+      : distintas.map((m) => `${m.label} ${fmtHcp(p.hcp[m.key])}`).join(" · ");
     const row = el(`
       <div class="hoy-row">
         <div class="hoy-row__main">
           <div class="hoy-row__name">
             <span>${p.name}</span>
-            <button class="hoy-row__link" data-act="detalle">${abierto ? "Ocultar modalidades" : "Por modalidad"}</button>
+            <button class="hoy-row__link" data-act="detalle">${abierto ? "Ocultar" : resumen + " ›"}</button>
           </div>
           <div class="stepper">
             <button class="stepper__btn" data-act="minus" aria-label="Bajar hándicap">−</button>
-            <span class="stepper__value" style="width:38px;font-size:18px">${fmtHcp(p.hcp.individuales)}</span>
+            <input class="stepper__value hcp-base" type="number" inputmode="decimal" step="0.1" value="${hcpBase(p)}" data-role="hcp-base-${p.id}" aria-label="Hándicap de ${p.name}" />
             <button class="stepper__btn" data-act="plus" aria-label="Subir hándicap">+</button>
           </div>
           <button class="hoy-row__quitar" data-act="quitar" aria-label="Quitar a ${p.name} de hoy">✕</button>
@@ -241,25 +265,25 @@ function renderPasoQuien(wrap, state, onChange) {
         ${abierto ? `
         <div class="hcp-grid">
           ${HCP_MODALIDADES.map((m) => `
-            <label>
+            <label class="${propio[m.key] ? "propio" : ""}">
               <span>${m.label}</span>
-              <input type="number" step="0.1" value="${p.hcp[m.key]}" data-role="hcp-${p.id}-${m.key}" data-hcp-key="${m.key}" />
+              <input type="number" step="0.1" value="${fmtHcp(p.hcp[m.key])}" data-role="hcp-${p.id}-${m.key}" data-hcp-key="${m.key}" />
+              ${propio[m.key] ? `<button class="hcp-grid__reset" data-reset="${m.key}">↺ copiar</button>` : `<small>auto</small>`}
             </label>
           `).join("")}
         </div>` : ""}
       </div>
     `);
-    // los botones ± mueven parejo las 5 modalidades (casi siempre es el
-    // mismo número); el detalle por modalidad queda en "Por modalidad"
-    const mover = (d) => {
-      HCP_MODALIDADES.forEach((m) => {
-        p.hcp[m.key] = Math.max(0, Math.round((p.hcp[m.key] + d) * 10) / 10);
-      });
+    const fijarBase = (v) => {
+      p.hcpBase = Math.max(0, Math.round(v * 10) / 10);
+      copiarHcpBase(p);
       guardarHcpEnAmigo(state, p);
-      onChange(state);
     };
-    row.querySelector('[data-act="minus"]').addEventListener("click", () => mover(-1));
-    row.querySelector('[data-act="plus"]').addEventListener("click", () => mover(1));
+    row.querySelector('[data-act="minus"]').addEventListener("click", () => { fijarBase(hcpBase(p) - 1); onChange(state); });
+    row.querySelector('[data-act="plus"]').addEventListener("click", () => { fijarBase(hcpBase(p) + 1); onChange(state); });
+    const baseInput = row.querySelector(".hcp-base");
+    baseInput.addEventListener("input", (e) => { fijarBase(parseFloat(e.target.value) || 0); onChange(state, { skipRender: true }); });
+    baseInput.addEventListener("change", () => onChange(state));
     row.querySelector('[data-act="detalle"]').addEventListener("click", () => {
       if (abierto) hcpDetalleAbierto.delete(p.id);
       else hcpDetalleAbierto.add(p.id);
@@ -272,15 +296,24 @@ function renderPasoQuien(wrap, state, onChange) {
     row.querySelectorAll("[data-hcp-key]").forEach((input) => {
       input.addEventListener("input", (e) => {
         p.hcp[input.dataset.hcpKey] = parseFloat(e.target.value) || 0;
+        p.hcpPropio = { ...(p.hcpPropio || {}), [input.dataset.hcpKey]: true };
         guardarHcpEnAmigo(state, p);
         onChange(state, { skipRender: true });
       });
       input.addEventListener("change", () => onChange(state));
     });
+    row.querySelectorAll("[data-reset]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        delete p.hcpPropio[btn.dataset.reset];
+        copiarHcpBase(p);
+        guardarHcpEnAmigo(state, p);
+        onChange(state);
+      });
+    });
     wrap.appendChild(row);
   });
   if (hoy.length > 0) {
-    wrap.appendChild(el(`<p class="help-text" style="margin-top:2px">Si cambias un hándicap, se queda guardado en tu amigo.</p>`));
+    wrap.appendChild(el(`<p class="help-text" style="margin-top:2px">Escribe un hándicap y se copia a todas las apuestas. Se queda guardado en tu amigo.</p>`));
   }
   if (!state.friends.some((f) => f.esYo)) {
     wrap.appendChild(el(`<p class="help-text">Marca tu ⭐ en Más → Mis amigos para salir ya elegido cada ronda.</p>`));

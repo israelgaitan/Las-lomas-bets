@@ -1225,3 +1225,33 @@ input:focus-visible {
 .sc-marca--bogey { border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 2px; }
 .sc-marca--doble { border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 2px; }
 .sc-marca--doble::after { display: block; border: 1.5px solid rgba(244, 239, 227, 0.75); border-radius: 3px; }
+
+input.stepper__value.hcp-base {
+  width: 46px;
+  font-size: 18px;
+  text-align: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.hcp-grid label small {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.hcp-grid label.propio input {
+  border-color: var(--dorado);
+}
+
+.hcp-grid__reset {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  font-size: 9px;
+  color: var(--dorado);
+}
