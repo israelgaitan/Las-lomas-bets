@@ -1219,9 +1219,9 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
 
     // 2. Eventos especiales: se pagan aparte y de inmediato, con el monto
     // base (sin el acumulado del bote), sin afectar el empate/acumulado de
-    // arriba. Yendo solo, cada evento SIEMPRE vale 1 raya fija (el
-    // multiplicador del hoyo no aplica al oyes/birdie/etc, solo a la raya
-    // de ganar el hoyo).
+    // arriba. Cada evento SIEMPRE vale 1 unidad fija, igual que en foursome
+    // y skins: lo que vale la loba ese hoyo (multiplicador + acumuladas) no
+    // aplica al oyes/birdie/etc, solo a la raya de ganar el hoyo.
     const eventosPareja = pareja.reduce(
       (sum, id) => sum + contarEventosJugador(brutos[id][h], par[h], sandies[id][h], oyes[id][h], metidas[id][h]),
       0
@@ -1232,7 +1232,7 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
     );
     const diffEventos = eventosPareja - eventosTrio;
     const antesEventos = { ...balances };
-    const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, vaSolo ? 1 : multiplicador, pareja, trio, vaSolo);
+    const boteEventos = pagarDiferenciaLoba(balances, diffEventos, monto, 1, pareja, trio, vaSolo);
     sumarRayasPorDinero(antesEventos);
 
     detalle.push({
