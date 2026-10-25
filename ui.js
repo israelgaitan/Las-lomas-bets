@@ -95,6 +95,12 @@ function guardarHcpEnAmigo(state, p) {
   friend.hcpPropio = { ...(p.hcpPropio || {}) };
 }
 
+// Ida = los primeros 9 hoyos que se juegan. Si salen por el 10, la ida
+// son los hoyos 10-18 y la vuelta los 1-9.
+function rangoIdaVuelta(state) {
+  return state.round.hoyoInicial === 10 ? { ida: "10-18", vuelta: "1-9" } : { ida: "1-9", vuelta: "10-18" };
+}
+
 function fmtHcp(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
@@ -1444,11 +1450,11 @@ function renderBetsScreen(state, onChange) {
           </div>
           ` : `
           <div class="field" style="margin-bottom:6px">
-            <label>$/hoyo ida (1-9)</label>
+            <label>$/hoyo ida (${rangoIdaVuelta(state).ida})</label>
             <input type="number" value="${match.montoIda}" data-role="match-ida" />
           </div>
           <div class="field" style="margin-bottom:6px">
-            <label>$/hoyo vuelta (10-18)</label>
+            <label>$/hoyo vuelta (${rangoIdaVuelta(state).vuelta})</label>
             <input type="number" value="${match.montoVuelta}" data-role="match-vuelta" />
           </div>
           `}
@@ -1761,11 +1767,11 @@ function renderBetsScreen(state, onChange) {
         <p class="card__title">${baseNames}<span style="opacity:0.5;font-size:12px"> vs </span>${rivalNames}</p>
         <div class="field-row">
           <div class="field">
-            <label>$/hoyo, hoyos 1-9</label>
+            <label>$/hoyo ida, hoyos ${rangoIdaVuelta(state).ida}</label>
             <input type="number" value="${cross.montoIda}" data-role="ida" />
           </div>
           <div class="field">
-            <label>$/hoyo, hoyos 10-18</label>
+            <label>$/hoyo vuelta, hoyos ${rangoIdaVuelta(state).vuelta}</label>
             <input type="number" value="${cross.montoVuelta}" data-role="vuelta" />
           </div>
         </div>
@@ -1809,11 +1815,11 @@ function renderBetsScreen(state, onChange) {
           ${esNormal ? `
           <div class="field-row">
             <div class="field">
-              <label>$/hoyo, hoyos 1-9</label>
+              <label>$/hoyo ida, hoyos ${rangoIdaVuelta(state).ida}</label>
               <input type="number" value="${seg.montoIda}" data-role="monto-ida" />
             </div>
             <div class="field">
-              <label>$/hoyo, hoyos 10-18</label>
+              <label>$/hoyo vuelta, hoyos ${rangoIdaVuelta(state).vuelta}</label>
               <input type="number" value="${seg.montoVuelta}" data-role="monto-vuelta" />
             </div>
           </div>

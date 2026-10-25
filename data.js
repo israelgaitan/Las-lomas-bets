@@ -201,8 +201,8 @@ function newState() {
       currentHole: 1,
       // En qué hoyo arranca la ronda: 1 (normal) o 10 (salen por el tee 10).
       // Solo cambia en qué hoyo abre la app; el par/hándicap de cada hoyo
-      // sigue siendo el de la cancha, y los montos ida/vuelta siguen
-      // ligados a los hoyos 1-9 / 10-18 reales, no al orden de juego.
+      // sigue siendo el de la cancha. Los montos de ida/vuelta siguen el
+      // orden de juego: si salen por el 10, la ida son los hoyos 10-18.
       hoyoInicial: 1,
       // false = ventaja repartida según la dificultad real de cada hoyo
       // (comportamiento de siempre). true = se intercambia el bloque de

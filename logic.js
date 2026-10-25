@@ -494,7 +494,10 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
  * (match.montoMatch) — no por hoyo. Si empatan en hoyos ganados, no se
  * cobra nada (push).
  */
-function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyesOrden, metidas) {
+function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyesOrden, metidas, hoyoInicial) {
+  // ida = los primeros 9 hoyos que se JUEGAN (si salen por el 10, la ida
+  // son los hoyos 10-18), igual que en stableford y foursome de 4
+  const orden = ordenDeJuego(hoyoInicial);
   const soloHoyos = match.modo === "matchPlay";
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
@@ -527,7 +530,7 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
       continue;
     }
 
-    const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
+    const montoHoyo = orden.indexOf(h) < 9 ? match.montoIda : match.montoVuelta;
 
     // unidades por eventos especiales (independiente de quién gane el hoyo)
     // — en modo matchPlay no cuentan, solo importa quién gana el hoyo.
@@ -647,7 +650,9 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden, metidas, contarEventos) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden, metidas, contarEventos, hoyoInicial) {
+  // ida = los primeros 9 hoyos que se JUEGAN, no los hoyos 1-9 de la tarjeta
+  const orden = ordenDeJuego(hoyoInicial);
   const holeResults = [];
   let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
@@ -670,7 +675,7 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden
     if (base.alta < rival.alta) resultAlta = "base";
     else if (base.alta > rival.alta) resultAlta = "rival";
 
-    const montoHoyo = h < 9 ? cross.montoIda : cross.montoVuelta;
+    const montoHoyo = orden.indexOf(h) < 9 ? cross.montoIda : cross.montoVuelta;
 
     // eventos especiales de cualquiera de los 2 jugadores de cada pareja
     // (esOyes=false siempre: el oyes en foursome se marca manual por cruce,
@@ -1341,7 +1346,7 @@ function calcResumenGeneral(state) {
     ? bets.individuales.matches.map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
         const ventajasPartido = calcGolpesVentaja(jugadoresPartido, siEfectivo, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, siEfectivo, state.sandies, state.oyesOrden, state.metidas);
+        return calcIndividual(m, scores, ventajasPartido, course.par, siEfectivo, state.sandies, state.oyesOrden, state.metidas, round.hoyoInicial);
       })
     : [];
   individualesResults.forEach((r) => {
@@ -1358,7 +1363,7 @@ function calcResumenGeneral(state) {
     if (formatoFoursome === "cruzado") {
       const ventajasForusome = calcVentajasForusome(players, siEfectivo, bets.foursome.crosses);
       foursomeResults = bets.foursome.crosses.map((c) =>
-        calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyesOrden, state.metidas, true)
+        calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyesOrden, state.metidas, true, round.hoyoInicial)
       );
     } else {
       // roundRobin o normal: necesitan EXACTAMENTE 4 participantes propios
