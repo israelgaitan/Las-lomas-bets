@@ -494,7 +494,10 @@ function contarEventosJugador(bruto, par, esSandy, esOyes, esMetida) {
  * (match.montoMatch) — no por hoyo. Si empatan en hoyos ganados, no se
  * cobra nada (push).
  */
-function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyesOrden, metidas) {
+function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyesOrden, metidas, hoyoInicial) {
+  // ida = los primeros 9 hoyos que se JUEGAN (si salen por el 10, la ida
+  // son los hoyos 10-18), igual que en stableford y foursome de 4
+  const orden = ordenDeJuego(hoyoInicial);
   const soloHoyos = match.modo === "matchPlay";
   const holeResults = [];
   let saldoA = 0; // dinero neto a favor de "a" (negativo = a favor de "b")
@@ -527,7 +530,7 @@ function calcIndividual(match, brutos, ventajas, par, strokeIndex, sandies, oyes
       continue;
     }
 
-    const montoHoyo = h < 9 ? match.montoIda : match.montoVuelta;
+    const montoHoyo = orden.indexOf(h) < 9 ? match.montoIda : match.montoVuelta;
 
     // unidades por eventos especiales (independiente de quién gane el hoyo)
     // — en modo matchPlay no cuentan, solo importa quién gana el hoyo.
@@ -647,7 +650,9 @@ function bolaAltaBaja(pair, brutos, ventajas, holeIdx) {
  * de esa vuelta.
  * Devuelve detalle por hoyo + saldo total en dinero (positivo = gana "base").
  */
-function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden, metidas, contarEventos) {
+function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden, metidas, contarEventos, hoyoInicial) {
+  // ida = los primeros 9 hoyos que se JUEGAN, no los hoyos 1-9 de la tarjeta
+  const orden = ordenDeJuego(hoyoInicial);
   const holeResults = [];
   let saldoTotal = 0; // dinero neto a favor de "base" (negativo = a favor de "rival")
 
@@ -670,7 +675,7 @@ function calcForusomeCross(cross, brutos, ventajasCruce, par, sandies, oyesOrden
     if (base.alta < rival.alta) resultAlta = "base";
     else if (base.alta > rival.alta) resultAlta = "rival";
 
-    const montoHoyo = h < 9 ? cross.montoIda : cross.montoVuelta;
+    const montoHoyo = orden.indexOf(h) < 9 ? cross.montoIda : cross.montoVuelta;
 
     // eventos especiales de cualquiera de los 2 jugadores de cada pareja
     // (esOyes=false siempre: el oyes en foursome se marca manual por cruce,
@@ -1326,22 +1331,26 @@ function calcResumenHastaHoyo(state, posicionEnOrden) {
 }
 
 function calcResumenGeneral(state) {
-  const { players, scores, bets, round } = state;
+  const { scores, bets, round } = state;
+  // solo cuentan los que juegan hoy: un lugar vacío ("Jugador 5" cuando
+  // son 4) no paga ni cobra, aunque siga marcado en alguna apuesta
+  const players = jugadoresDeHoy(state);
   const course = getActiveCourse(state);
   const siEfectivo = strokeIndexEfectivo(course.strokeIndex, round.invertirVentajas);
 
   const balances = {};
-  players.forEach((p) => (balances[p.id] = 0));
+  state.players.forEach((p) => (balances[p.id] = 0));
 
   // Individuales (hándicap propio de esta modalidad). La ventaja se
   // calcula POR PARTIDO, solo entre los 2 jugadores involucrados (el de
   // menor hcp de ESOS 2 es la referencia), no contra el más bajo de todo
   // el grupo — así cada 1v1 usa la diferencia real entre ambos rivales.
+  const esDeHoy = (id) => players.some((p) => p.id === id);
   const individualesResults = bets.individuales.enabled
-    ? bets.individuales.matches.map((m) => {
+    ? bets.individuales.matches.filter((m) => esDeHoy(m.a) && esDeHoy(m.b)).map((m) => {
         const jugadoresPartido = players.filter((p) => p.id === m.a || p.id === m.b);
         const ventajasPartido = calcGolpesVentaja(jugadoresPartido, siEfectivo, "individuales");
-        return calcIndividual(m, scores, ventajasPartido, course.par, siEfectivo, state.sandies, state.oyesOrden, state.metidas);
+        return calcIndividual(m, scores, ventajasPartido, course.par, siEfectivo, state.sandies, state.oyesOrden, state.metidas, round.hoyoInicial);
       })
     : [];
   individualesResults.forEach((r) => {
@@ -1356,9 +1365,9 @@ function calcResumenGeneral(state) {
   let foursomeResults = [];
   if (bets.foursome.enabled) {
     if (formatoFoursome === "cruzado") {
-      const ventajasForusome = calcVentajasForusome(players, siEfectivo, bets.foursome.crosses);
+      const ventajasForusome = calcVentajasForusome(state.players, siEfectivo, bets.foursome.crosses);
       foursomeResults = bets.foursome.crosses.map((c) =>
-        calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyesOrden, state.metidas, true)
+        calcForusomeCross(c, scores, ventajasForusome[c.id], course.par, state.sandies, state.oyesOrden, state.metidas, true, round.hoyoInicial)
       );
     } else {
       // roundRobin o normal: necesitan EXACTAMENTE 4 participantes propios
@@ -1551,7 +1560,7 @@ function archivarRonda(state) {
     // desglose COMPLETO de los 5 jugadores de la ronda, no solo "yo" —
     // para poder ver/consultar después cuánto ganó/perdió cada quien y
     // en qué modalidad, sin tener que abrir el Excel.
-    jugadores: state.players.map((p) => ({
+    jugadores: jugadoresDeHoy(state).map((p) => ({
       nombre: p.name,
       friendId: p.friendId,
       golpes: totalGolpesJugador(state, p.id),
@@ -1570,4 +1579,40 @@ function holesPlayedCount(state) {
     if (any) count++;
   }
   return count;
+}
+
+/**
+ * Los jugadores de la ronda de hoy: los lugares que tienen un amigo
+ * elegido. Si nadie se ha elegido todavía, regresa los 5 lugares.
+ */
+function jugadoresDeHoy(state) {
+  const hoy = state.players.filter((p) => p.friendId);
+  return hoy.length > 0 ? hoy : state.players;
+}
+
+/**
+ * Al empezar la ronda, saca de cada apuesta los lugares que quedaron
+ * vacíos (ej: "Jugador 5" cuando juegan 4). No mete a nadie: quién entra
+ * a cada apuesta se sigue eligiendo a mano en Apuestas.
+ */
+function quitarLugaresVacios(state) {
+  const ids = jugadoresDeHoy(state).map((p) => p.id);
+  const esDeHoy = (id) => ids.includes(id);
+  const bets = state.bets;
+  ["individuales", "skins", "stableford", "banderas", "threePutt", "chupes"].forEach((key) => {
+    if (bets[key] && Array.isArray(bets[key].participantes)) {
+      bets[key].participantes = bets[key].participantes.filter(esDeHoy);
+    }
+  });
+  bets.individuales.matches = bets.individuales.matches.filter((m) => esDeHoy(m.a) && esDeHoy(m.b));
+
+  const fs = bets.foursome;
+  const antes = fs.participantes.length;
+  fs.participantes = fs.participantes.filter(esDeHoy);
+  if (fs.participantes.length !== antes && (fs.participantes.length === 4 || fs.participantes.length === 5)) {
+    if (!fs.basePlayers.every(esDeHoy)) fs.basePlayers = fs.participantes.slice(0, 2);
+    const jugadoresFoursome = state.players.filter((p) => fs.participantes.includes(p.id));
+    fs.crosses = generarCrucesForusome(fs.basePlayers, jugadoresFoursome, fs.crosses);
+  }
+  fs.participantes4 = fs.participantes4.filter(esDeHoy);
 }
