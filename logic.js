@@ -1075,9 +1075,10 @@ function calcChupes(players, banderasState, monto, participantIds) {
  * por cada birdie/águila/hoyo en uno/sandy/oyes que logre CUALQUIERA de
  * sus jugadores. Se cobra la diferencia de unidades entre los 2 equipos,
  * multiplicada por el monto de loba y el multiplicador de ese hoyo.
- * Si el hoyo empata (diferencia de unidades = 0), no se paga nada y el
- * monto base de ese hoyo se acumula, sumándose al monto del siguiente
- * hoyo de loba configurado (igual que en skins).
+ * Si el hoyo empata en golpe neto, no se paga nada y el monto base de ese
+ * hoyo (por su multiplicador) se acumula, sumándose al monto del siguiente
+ * hoyo de loba configurado (igual que en skins). El acumulado se SUMA al
+ * multiplicador del hoyo que lo cobra: 2 empates + ×10 = 12 por persona.
  * @returns {Object} { detalle: [...por hoyo...], balances: {id: monto neto} }
  */
 /**
@@ -1203,20 +1204,15 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
       acumulaSiguiente = true;
       acumulado += monto * multiplicador;
     } else {
-      const montoVigente = monto + acumulado;
+      // El acumulado SE SUMA al multiplicador del hoyo, no se multiplica:
+      // 2 hoyos empatados + ×10 en este hoyo = 12 veces el monto base por
+      // persona (no (1 + 2) × 10 = 30). Yendo solo, ese mismo monto lo
+      // paga cada uno de los 4; en modo normal (2v3) se mueven 3 veces ese
+      // monto en total, como siempre.
+      const montoVigente = monto * multiplicador + acumulado;
       const antesGolpe = { ...balances };
-      // Yendo solo, el multiplicador significa RAYAS EXTRA por ganar el
-      // hoyo (ej: multiplicador 2 = 2 rayas), no un multiplicador de
-      // dinero — el monto de cada raya se queda fijo. En modo normal
-      // (2v3) el multiplicador sigue siendo multiplicador de dinero,
-      // como antes.
-      if (vaSolo) {
-        const unidadesGolpe = (golpeGanador === "pareja" ? 1 : -1) * multiplicador;
-        boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, 1, pareja, trio, vaSolo);
-      } else {
-        const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
-        boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, multiplicador, pareja, trio, vaSolo);
-      }
+      const unidadesGolpe = golpeGanador === "pareja" ? 1 : -1;
+      boteHoyo = pagarDiferenciaLoba(balances, unidadesGolpe, montoVigente, 1, pareja, trio, vaSolo);
       sumarRayasPorDinero(antesGolpe);
       acumulado = 0;
     }
