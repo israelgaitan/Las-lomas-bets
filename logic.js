@@ -1256,7 +1256,10 @@ function calcLoba(players, brutos, ventajas, lobaConfig, monto, par, sandies, oy
     });
   });
 
-  return { detalle, balances, unidadesPorJugador };
+  // Cuántas rayas (en monto base) siguen acumuladas por empates sin cobrar,
+  // para mostrar en el hoyo "de cuántas va esta loba".
+  const acumuladasPendientes = monto > 0 ? acumulado / monto : 0;
+  return { detalle, balances, unidadesPorJugador, acumuladasPendientes };
 }
 
 /**

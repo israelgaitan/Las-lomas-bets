@@ -1156,9 +1156,16 @@ function renderHoleScreen(state, onChange) {
           </div>
         </div>
         <p class="help-text">${cfg.companero === "solo" ? "Va solo contra los otros 4 jugadores juntos." : "El resto del grupo forma el equipo de 3 automáticamente."}</p>
-        <div class="field" style="margin-top:10px">
-          <label>Multiplicador del hoyo ${h + 1} (puedes subirlo manualmente cuando decidan, ej: irse solo)</label>
-          <input type="number" min="1" step="1" value="${cfg.multiplicador}" data-role="multiplicador" />
+        <div class="loba-vale">
+          <div>
+            <span class="loba-vale__label">Esta loba va de</span>
+            <span class="loba-vale__desglose" data-role="loba-desglose"></span>
+          </div>
+          <div class="stepper">
+            <button class="stepper__btn" data-act="loba-minus" aria-label="Bajar">−</button>
+            <span class="stepper__value" data-role="loba-total" style="min-width:38px;text-align:center"></span>
+            <button class="stepper__btn" data-act="loba-plus" aria-label="Subir">+</button>
+          </div>
         </div>
       </div>
     `);
@@ -1175,14 +1182,26 @@ function renderHoleScreen(state, onChange) {
         cfg.companero = val === "" ? null : val === "solo" ? "solo" : parseInt(val);
       });
     });
-    const multInput = lobaCard.querySelector('[data-role="multiplicador"]');
-    if (multInput) {
-      multInput.addEventListener("input", (e) => {
-        cfg.multiplicador = parseFloat(e.target.value) || 1;
-        onChange(state, { skipRender: true });
+    // "De cuántas va": lo que vale este hoyo (cfg.multiplicador) más las
+    // acumuladas por empates anteriores. Los botones suben o bajan lo que
+    // vale este hoyo; las acumuladas no se pueden quitar.
+    const posLoba = ordenDeJuego(state.round.hoyoInicial).indexOf(h);
+    const acumuladas = calcResumenHastaHoyo(state, posLoba).lobaResult.acumuladasPendientes || 0;
+    const pintarLobaVale = () => {
+      lobaCard.querySelector('[data-role="loba-total"]').textContent = cfg.multiplicador + acumuladas;
+      lobaCard.querySelector('[data-role="loba-desglose"]').textContent = acumuladas > 0
+        ? `${cfg.multiplicador} de este hoyo + ${acumuladas} acumulada${acumuladas === 1 ? "" : "s"} por empate`
+        : "Súbele con + si deciden que valga más";
+    };
+    pintarLobaVale();
+    lobaCard.querySelectorAll('[data-act^="loba-"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = cfg.multiplicador + (btn.dataset.act === "loba-plus" ? 1 : -1);
+        if (next < 1) return;
+        cfg.multiplicador = next;
+        onChange(state);
       });
-      multInput.addEventListener("change", () => onChange(state));
-    }
+    });
     wrap.appendChild(lobaCard);
   }
 
