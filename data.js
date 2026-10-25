@@ -112,6 +112,8 @@ function defaultPlayer(id, name) {
       loba: 0,
       stableford: 0,
     },
+    hcpBase: 0,
+    hcpPropio: {},
   };
 }
 
@@ -148,7 +150,22 @@ function defaultFriend(id, name) {
       loba: 0,
       stableford: 0,
     },
+    hcpBase: 0,
+    hcpPropio: {},
   };
+}
+
+// El hándicap "base" (el número grande en Nueva ronda) se copia solo a
+// cada modalidad; hcpPropio marca las que se cambiaron a mano y ya no lo
+// siguen. Datos de antes: base = individuales, y cualquier modalidad con
+// otro número queda como propia para no perderla.
+function migrarHcpBase(p) {
+  if (p.hcpBase !== undefined) return;
+  p.hcpBase = p.hcp.individuales;
+  p.hcpPropio = {};
+  Object.keys(p.hcp).forEach((k) => {
+    if (p.hcp[k] !== p.hcpBase) p.hcpPropio[k] = true;
+  });
 }
 
 function emptyHoleScores() {
@@ -600,8 +617,10 @@ function migrateState(state) {
     if (!f.hcp) {
       f.hcp = { individuales: 0, foursome: 0, skins: 0, loba: 0, stableford: 0 };
     }
+    migrarHcpBase(f);
     if (f.esYo === undefined) f.esYo = false;
   });
+  state.players.forEach(migrarHcpBase);
   if (state.miPlayerId === undefined) {
     state.miPlayerId = state.players[0] ? state.players[0].id : 1;
   }
