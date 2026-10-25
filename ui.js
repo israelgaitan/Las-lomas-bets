@@ -2412,13 +2412,16 @@ function renderSummaryScreen(state, onChange) {
   const signo = (v) => (v > 0 ? "+" : "") + v;
   const colorVal = (v) => (v === null ? "opacity:0.3" : v > 0 ? "color:#7ee787" : v < 0 ? "color:#ff7b72" : "color:var(--crema)");
   // Fila genérica: valores por hoyo (null = no jugado) con subtotal OUT/IN/TOT
-  const agregarFilaUnidades = (etiqueta, valoresPorHoyo) => {
+  // Si se pasa `mostrarPorHoyo`, la celda de cada hoyo enseña ese valor
+  // (ej. el acumulado) y los subtotales siguen sumando `valoresPorHoyo`.
+  const agregarFilaUnidades = (etiqueta, valoresPorHoyo, mostrarPorHoyo) => {
     const fila = el(`<tr style="border-top:1px solid var(--linea)"></tr>`);
     fila.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600;font-size:11px">${etiqueta}</td>`));
     let out = 0, outJug = 0, inn = 0, inJug = 0;
     for (let h = 0; h < 18; h++) {
       const val = valoresPorHoyo[h];
-      fila.appendChild(el(`<td style="${cellStyle};${colorVal(val)}">${val !== null ? signo(val) : "—"}</td>`));
+      const ver = mostrarPorHoyo ? mostrarPorHoyo[h] : val;
+      fila.appendChild(el(`<td style="${cellStyle};${colorVal(ver)}">${ver !== null ? signo(ver) : "—"}</td>`));
       if (val !== null) { if (h < 9) { out += val; outJug++; } else { inn += val; inJug++; } }
       if (h === 8) fila.appendChild(el(`<td style="${extraCellStyle}">${outJug > 0 ? signo(out) : "—"}</td>`));
     }
@@ -2427,8 +2430,21 @@ function renderSummaryScreen(state, onChange) {
     table.appendChild(fila);
   };
 
-  // Individuales: una fila por partido, unidades de cada hoyo desde el
-  // punto de vista del primer jugador (en match play: +1/-1 por hoyo ganado)
+  // Individuales: una fila por partido, desde el punto de vista del primer
+  // jugador. Cada hoyo enseña cómo va el partido ACUMULADO hasta ese hoyo
+  // (en match play: +1/-1 por hoyo ganado, empate no mueve), siguiendo el
+  // orden de juego real por si se sale por el 10.
+  const ordenJuego = ordenDeJuego(state.round.hoyoInicial);
+  const acumularEnOrden = (valores) => {
+    const acum = new Array(18).fill(null);
+    let corrida = 0;
+    ordenJuego.forEach((h) => {
+      if (valores[h] === null) return;
+      corrida += valores[h];
+      acum[h] = corrida;
+    });
+    return acum;
+  };
   if (state.bets.individuales.enabled) {
     resumen.individualesResults.forEach((r) => {
       const esMatchPlay = r.modo === "matchPlay";
@@ -2439,7 +2455,7 @@ function renderSummaryScreen(state, onChange) {
         if (esMatchPlay) valores.push(hr.ganadorHoyo === r.a ? 1 : hr.ganadorHoyo === r.b ? -1 : 0);
         else valores.push(hr.diffUnidades);
       }
-      agregarFilaUnidades(`${playerName(state, r.a)} vs ${playerName(state, r.b)}`, valores);
+      agregarFilaUnidades(`${playerName(state, r.a)} vs ${playerName(state, r.b)}`, valores, acumularEnOrden(valores));
     });
   }
   if (state.bets.foursome.enabled) {
