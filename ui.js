@@ -144,6 +144,7 @@ function renderNuevaRondaScreen(state, onChange, irA) {
     // abre la tarjeta en el hoyo de salida, salvo que ya se hayan anotado
     // golpes (alguien que regresó a editar a media ronda)
     if (holesPlayedCount(state) === 0) state.round.currentHole = state.round.hoyoInicial;
+    quitarLugaresVacios(state);
     reiniciarPasosNuevaRonda();
     onChange(state, { skipRender: true });
     irA("hole");
@@ -767,7 +768,7 @@ function pendientesDelHoyo(state, h) {
 }
 
 function hoyoCompleto(state, h) {
-  return state.players.every((p) => state.scores[p.id][h] !== null) && pendientesDelHoyo(state, h).length === 0;
+  return jugadoresDeHoy(state).every((p) => state.scores[p.id][h] !== null) && pendientesDelHoyo(state, h).length === 0;
 }
 
 let avanceTimer = null;
@@ -876,7 +877,7 @@ function renderHoleScreen(state, onChange) {
   // Barra de progreso de 18 hoyos
   const progress = el(`<div class="hole-progress"></div>`);
   for (let i = 0; i < 18; i++) {
-    const played = state.players.some((p) => state.scores[p.id][i] !== null);
+    const played = jugadoresDeHoy(state).some((p) => state.scores[p.id][i] !== null);
     const dot = el(`<div class="hole-progress__dot"></div>`);
     if (i === h) dot.classList.add("current");
     else if (played) dot.classList.add("played");
@@ -894,15 +895,15 @@ function renderHoleScreen(state, onChange) {
   // necesariamente la misma persona en todas). Se guarda por jugador para
   // pintarla como badge directo en su fila, en vez de una tarjeta aparte.
   const ventajasPorJugador = {};
-  state.players.forEach((p) => (ventajasPorJugador[p.id] = []));
+  jugadoresDeHoy(state).forEach((p) => (ventajasPorJugador[p.id] = []));
   function agregarVentaja(playerId, texto) {
     if (!ventajasPorJugador[playerId]) ventajasPorJugador[playerId] = [];
     ventajasPorJugador[playerId].push(texto);
   }
 
   if (state.bets.individuales.enabled) {
-    const vInd = calcGolpesVentaja(state.players, siEfectivo, "individuales");
-    state.players.forEach((p) => {
+    const vInd = calcGolpesVentaja(jugadoresDeHoy(state), siEfectivo, "individuales");
+    jugadoresDeHoy(state).forEach((p) => {
       if (vInd[p.id][h] > 0) agregarVentaja(p.id, `Ind${vInd[p.id][h] > 1 ? ` +${vInd[p.id][h]}` : ""}`);
     });
     // partidos con ventaja manual (biblia) pueden diferir del hándicap
@@ -929,7 +930,7 @@ function renderHoleScreen(state, onChange) {
         }
       });
     } else if (state.bets.foursome.participantes4.length === 4) {
-      const jugadores4 = state.players.filter((p) => state.bets.foursome.participantes4.includes(p.id));
+      const jugadores4 = jugadoresDeHoy(state).filter((p) => state.bets.foursome.participantes4.includes(p.id));
       const segmentosActivos = formatoF === "normal" ? state.bets.foursome.segmentos.slice(0, 1) : state.bets.foursome.segmentos;
       const segmentoDeEsteHoyo = segmentosActivos.find((seg) => seg.hoyos.includes(h));
       if (segmentoDeEsteHoyo) {
@@ -944,7 +945,7 @@ function renderHoleScreen(state, onChange) {
   }
 
   if (state.bets.skins.enabled) {
-    const jugadoresSkins = state.players.filter((p) => state.bets.skins.participantes.includes(p.id));
+    const jugadoresSkins = jugadoresDeHoy(state).filter((p) => state.bets.skins.participantes.includes(p.id));
     const vSkins = calcGolpesVentaja(jugadoresSkins, siEfectivo, "skins");
     jugadoresSkins.forEach((p) => {
       if (vSkins[p.id][h] > 0) agregarVentaja(p.id, `Sk${vSkins[p.id][h] > 1 ? ` +${vSkins[p.id][h]}` : ""}`);
@@ -952,14 +953,14 @@ function renderHoleScreen(state, onChange) {
   }
 
   if (state.bets.loba.enabled) {
-    const vLoba = calcGolpesVentaja(state.players, siEfectivo, "loba");
-    state.players.forEach((p) => {
+    const vLoba = calcGolpesVentaja(jugadoresDeHoy(state), siEfectivo, "loba");
+    jugadoresDeHoy(state).forEach((p) => {
       if (vLoba[p.id][h] > 0) agregarVentaja(p.id, `Loba${vLoba[p.id][h] > 1 ? ` +${vLoba[p.id][h]}` : ""}`);
     });
   }
 
   if (state.bets.stableford.enabled) {
-    const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
+    const jugadoresSf = jugadoresDeHoy(state).filter((p) => state.bets.stableford.participantes.includes(p.id));
     const vSf = calcGolpesVentaja(jugadoresSf, siEfectivo, "stableford");
     jugadoresSf.forEach((p) => {
       if (vSf[p.id][h] > 0) agregarVentaja(p.id, `SF${vSf[p.id][h] > 1 ? ` +${vSf[p.id][h]}` : ""}`);
@@ -970,7 +971,7 @@ function renderHoleScreen(state, onChange) {
   // badge directo junto al nombre de cada jugador en su fila, más abajo)
 
   // Fila por jugador
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const bruto = state.scores[p.id][h];
     const isMetida = state.metidas[p.id][h];
     // ganó el oyes de este hoyo (quedó en posición 1 = más cerca de la
@@ -1103,7 +1104,7 @@ function renderHoleScreen(state, onChange) {
   // Si ya están todos los golpes pero falta algo del hoyo (oyes / loba),
   // avisamos aquí: el avance automático espera a que se complete.
   const pendientes = pendientesDelHoyo(state, h);
-  if (pendientes.length > 0 && state.players.every((p) => state.scores[p.id][h] !== null)) {
+  if (pendientes.length > 0 && jugadoresDeHoy(state).every((p) => state.scores[p.id][h] !== null)) {
     wrap.appendChild(el(`<p class="hole-pending">Falta marcar ${pendientes.join(" y ")} para pasar al siguiente hoyo ↓</p>`));
   }
 
@@ -1130,7 +1131,7 @@ function renderHoleScreen(state, onChange) {
       <div class="card oyes-card">
         <p class="help-text" style="margin:0 0 10px">Más cerca primero.</p>
         <div class="oyes-picks">
-          ${state.players.map((p) => {
+          ${jugadoresDeHoy(state).map((p) => {
             const pos = ordenHoyo[p.id];
             return `
               <button class="oyes-pick ${pos ? "active" : ""} ${pos === 1 ? "first" : ""}" data-oyes-player="${p.id}">
@@ -1188,7 +1189,7 @@ function renderHoleScreen(state, onChange) {
             <label>Loba</label>
             <select data-role="loba-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
               <option value="">— elegir —</option>
-              ${state.players.map((p) => `<option value="${p.id}" ${cfg.loba === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              ${jugadoresDeHoy(state).map((p) => `<option value="${p.id}" ${cfg.loba === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
             </select>
           </div>
           <div class="field">
@@ -1196,7 +1197,7 @@ function renderHoleScreen(state, onChange) {
             <select data-role="comp-select" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
               <option value="">— elegir —</option>
               <option value="solo" ${cfg.companero === "solo" ? "selected" : ""}>Va solo (1 vs 4)</option>
-              ${state.players.filter((p) => p.id !== cfg.loba).map((p) => `<option value="${p.id}" ${cfg.companero === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
+              ${jugadoresDeHoy(state).filter((p) => p.id !== cfg.loba).map((p) => `<option value="${p.id}" ${cfg.companero === p.id ? "selected" : ""}>${p.name}</option>`).join("")}
             </select>
           </div>
         </div>
@@ -1256,7 +1257,7 @@ function renderHoleScreen(state, onChange) {
   const posicionEnOrden = ordenJuego.indexOf(h) + 1;
   const resumenHasta = calcResumenHastaHoyo(state, posicionEnOrden);
   const accCard = el(`<div class="card"></div>`);
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const bal = resumenHasta.balances[p.id];
     accCard.appendChild(el(`
       <div class="balance-row" style="margin-bottom:6px">
@@ -1275,7 +1276,7 @@ function renderHoleScreen(state, onChange) {
     return ` (${redondeado > 0 ? "+" : ""}${redondeado}u)`;
   }
 
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const filas = [];
 
     if (state.bets.individuales.enabled) {
@@ -1378,7 +1379,7 @@ function renderBetsScreen(state, onChange) {
 
   const participantesCard = el(`<div class="card"></div>`);
   participantesCard.appendChild(el(`<p class="card__subtitle" style="margin-bottom:8px">¿Quién juega individuales hoy?</p>`));
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const checked = state.bets.individuales.participantes.includes(p.id);
     const row = el(`
       <div class="checkbox-row">
@@ -1400,7 +1401,7 @@ function renderBetsScreen(state, onChange) {
   });
   const genBtn = el(`<button class="btn btn-primary btn-small" style="width:100%;margin-top:10px">Generar todos vs todos</button>`);
   genBtn.addEventListener("click", () => {
-    const participantes = state.bets.individuales.participantes;
+    const participantes = state.bets.individuales.participantes.filter((id) => jugadoresDeHoy(state).some((p) => p.id === id));
     if (participantes.length < 2) {
       alert("Selecciona al menos 2 jugadores para generar enfrentamientos.");
       return;
@@ -1531,10 +1532,10 @@ function renderBetsScreen(state, onChange) {
     <div>
       <div style="display:flex;gap:8px;margin-top:12px">
         <select data-role="a" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-          ${state.players.map((p) => `<option value="${p.id}">${p.name}</option>`).join("")}
+          ${jugadoresDeHoy(state).map((p) => `<option value="${p.id}">${p.name}</option>`).join("")}
         </select>
         <select data-role="b" style="flex:1;background:rgba(0,0,0,0.2);border:1px solid var(--linea);border-radius:10px;padding:10px;color:var(--crema)">
-          ${state.players.map((p, i) => `<option value="${p.id}" ${i === 1 ? "selected" : ""}>${p.name}</option>`).join("")}
+          ${jugadoresDeHoy(state).map((p, i) => `<option value="${p.id}" ${i === 1 ? "selected" : ""}>${p.name}</option>`).join("")}
         </select>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -1601,7 +1602,7 @@ function renderBetsScreen(state, onChange) {
           <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy?</p>
         </div>
       `);
-      state.players.forEach((p) => {
+      jugadoresDeHoy(state).forEach((p) => {
         const checked = state.bets.foursome.participantes.includes(p.id);
         const row = el(`
           <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
@@ -1624,7 +1625,7 @@ function renderBetsScreen(state, onChange) {
               !state.bets.foursome.participantes.includes(state.bets.foursome.basePlayers[1])) {
             state.bets.foursome.basePlayers = state.bets.foursome.participantes.slice(0, 2);
           }
-          const jugadoresFoursome = state.players.filter((pl) => state.bets.foursome.participantes.includes(pl.id));
+          const jugadoresFoursome = jugadoresDeHoy(state).filter((pl) => state.bets.foursome.participantes.includes(pl.id));
           state.bets.foursome.crosses = generarCrucesForusome(state.bets.foursome.basePlayers, jugadoresFoursome, state.bets.foursome.crosses);
           onChange(state);
         });
@@ -1634,7 +1635,7 @@ function renderBetsScreen(state, onChange) {
       participantesCard.appendChild(el(`<p class="help-text" style="margin-top:8px">${nParticipantesActual === 4 ? "4 seleccionados: un solo cruce 2 vs 2." : nParticipantesActual === 5 ? "5 seleccionados: cruzado, 3 cruces contra las 3 combinaciones." : `⚠️ ${nParticipantesActual} seleccionados — elige exactamente 4 o 5.`}</p>`));
       wrap.appendChild(participantesCard);
 
-      const jugadoresFoursomeActuales = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+      const jugadoresFoursomeActuales = jugadoresDeHoy(state).filter((p) => state.bets.foursome.participantes.includes(p.id));
 
       const baseCard = el(`
         <div class="card" style="margin-top:10px">
@@ -1663,7 +1664,7 @@ function renderBetsScreen(state, onChange) {
           return;
         }
         state.bets.foursome.basePlayers = [b1, b2];
-        const jugadoresFoursome = state.players.filter((p) => state.bets.foursome.participantes.includes(p.id));
+        const jugadoresFoursome = jugadoresDeHoy(state).filter((p) => state.bets.foursome.participantes.includes(p.id));
         state.bets.foursome.crosses = generarCrucesForusome([b1, b2], jugadoresFoursome, state.bets.foursome.crosses);
         onChange(state);
       }
@@ -1677,7 +1678,7 @@ function renderBetsScreen(state, onChange) {
           <p class="card__subtitle" style="margin-bottom:8px">¿Quién juega foursome hoy? (exactamente 4)</p>
         </div>
       `);
-      state.players.forEach((p) => {
+      jugadoresDeHoy(state).forEach((p) => {
         const checked = state.bets.foursome.participantes4.includes(p.id);
         const row = el(`
           <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
@@ -1881,7 +1882,7 @@ function renderBetsScreen(state, onChange) {
   skinsCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
 
   skinsCard.appendChild(el(`<p class="help-text" style="margin:8px 0 4px">¿Quién juega skins hoy?</p>`));
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const checked = state.bets.skins.participantes.includes(p.id);
     const row = el(`
       <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
@@ -1900,7 +1901,7 @@ function renderBetsScreen(state, onChange) {
     skinsCard.appendChild(row);
   });
 
-  state.players.filter((p) => state.bets.skins.participantes.includes(p.id)).forEach((p) => {
+  jugadoresDeHoy(state).filter((p) => state.bets.skins.participantes.includes(p.id)).forEach((p) => {
     const ganado = resumen.skinsResult.totalesPorJugador[p.id] || 0;
     skinsCard.appendChild(el(`
       <div class="match-row">
@@ -1931,7 +1932,7 @@ function renderBetsScreen(state, onChange) {
       onChange(state, { skipRender: true });
     });
     lobaCard.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
-    state.players.forEach((p) => {
+    jugadoresDeHoy(state).forEach((p) => {
       const ganado = resumen.lobaResult.balances[p.id];
       lobaCard.appendChild(el(`
         <div class="match-row">
@@ -1999,7 +2000,7 @@ function renderBetsScreen(state, onChange) {
     sfCard.querySelector('[data-role="sf-total"]').addEventListener("change", () => onChange(state));
 
     sfCard.appendChild(el(`<p class="help-text" style="margin:8px 0 4px">¿Quién juega stableford hoy?</p>`));
-    state.players.forEach((p) => {
+    jugadoresDeHoy(state).forEach((p) => {
       const checked = state.bets.stableford.participantes.includes(p.id);
       const row = el(`
         <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
@@ -2019,7 +2020,7 @@ function renderBetsScreen(state, onChange) {
     });
     wrap.appendChild(sfCard);
 
-    const jugadoresSf = state.players.filter((p) => state.bets.stableford.participantes.includes(p.id));
+    const jugadoresSf = jugadoresDeHoy(state).filter((p) => state.bets.stableford.participantes.includes(p.id));
 
     const sfTable = el(`<div class="card"></div>`);
     sfTable.appendChild(el(`
@@ -2068,7 +2069,7 @@ function renderBetsScreen(state, onChange) {
 
     const participantesCard = el(`<div class="card"></div>`);
     participantesCard.appendChild(el(`<p class="card__subtitle" style="margin-bottom:8px">¿Quién juega ${titulo.toLowerCase()} hoy?</p>`));
-    state.players.forEach((p) => {
+    jugadoresDeHoy(state).forEach((p) => {
       const checked = state.bets[betKey].participantes.includes(p.id);
       const row = el(`
         <div class="checkbox-row">
@@ -2103,7 +2104,7 @@ function renderBetsScreen(state, onChange) {
       onChange(state, { skipRender: true });
     });
     card.querySelector('[data-role="monto"]').addEventListener("change", () => onChange(state));
-    state.players.filter((p) => state.bets[betKey].participantes.includes(p.id)).forEach((p) => {
+    jugadoresDeHoy(state).filter((p) => state.bets[betKey].participantes.includes(p.id)).forEach((p) => {
       const bal = resumen[resultKey].balances[p.id] || 0;
       card.appendChild(el(`
         <div class="match-row">
@@ -2368,7 +2369,7 @@ function renderSummaryScreen(state, onChange) {
 
   // una fila por jugador (golpes), y si Stableford está activo, una fila
   // extra debajo con los puntos de ese jugador en cada hoyo
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const fila = el(`<tr style="${state.bets.stableford.enabled ? "" : "border-bottom:1px solid var(--linea)"}"></tr>`);
     fila.appendChild(el(`<td style="${cellStyle};text-align:left;font-weight:600">${p.name}</td>`));
     const ida = sumaGolpesBrutos(state, p.id, 0, 9);
@@ -2524,7 +2525,7 @@ function renderSummaryScreen(state, onChange) {
 
   wrap.appendChild(el(`<p class="section-divider">Balance neto (dinero)</p>`));
 
-  const sorted = [...state.players].sort(
+  const sorted = [...jugadoresDeHoy(state)].sort(
     (a, b) => resumen.balances[b.id] - resumen.balances[a.id]
   );
 
@@ -2562,7 +2563,7 @@ function renderSummaryScreen(state, onChange) {
   wrap.appendChild(el(`<p class="section-divider">Desglose por modalidad</p>`));
 
   const breakdown = el(`<div class="card"></div>`);
-  state.players.forEach((p) => {
+  jugadoresDeHoy(state).forEach((p) => {
     const ind = resumen.individualesResults.reduce((sum, r) => {
       if (r.a === p.id) return sum + r.saldoA;
       if (r.b === p.id) return sum - r.saldoA;
