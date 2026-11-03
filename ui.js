@@ -1369,6 +1369,10 @@ function renderHoleScreen(state, onChange) {
    PANTALLA: APUESTAS
    ============================================================ */
 
+// Partidos de individuales abiertos en Apuestas (clave "a-b"). Vive fuera
+// del render para que no se cierren solos al cambiar un monto.
+const partidosAbiertos = new Set();
+
 function renderBetsScreen(state, onChange) {
   const wrap = el(`<div></div>`);
   const resumen = calcResumenGeneral(state);
@@ -1382,10 +1386,10 @@ function renderBetsScreen(state, onChange) {
   jugadoresDeHoy(state).forEach((p) => {
     const checked = state.bets.individuales.participantes.includes(p.id);
     const row = el(`
-      <div class="checkbox-row">
+      <label class="chip-check">
         <input type="checkbox" ${checked ? "checked" : ""} data-player-id="${p.id}" />
         <span>${p.name}</span>
-      </div>
+      </label>
     `);
     row.querySelector("input").addEventListener("change", (e) => {
       const list = state.bets.individuales.participantes;
@@ -1429,12 +1433,23 @@ function renderBetsScreen(state, onChange) {
     const marcadorHoyos = esMatchPlay && r.holesCounted > 0
       ? `<p class="help-text" style="margin:2px 0 8px">Hoyos ganados: ${nombreA} ${r.hoyosGanadosA} – ${r.hoyosGanadosB} ${nombreB}</p>`
       : "";
+    // Cada partido se ve en una sola línea (nombres, montos y saldo); al
+    // tocarla se abre para editar. Se recuerda cuáles están abiertos
+    // entre renders (ver partidosAbiertos).
+    const claveP = `${r.a}-${r.b}`;
+    const abierto = partidosAbiertos.has(claveP);
+    const montosTxt = esMatchPlay
+      ? `${fmtMoney(match.montoMatch || 0)} partido`
+      : `${fmtMoney(match.montoIda)} / ${fmtMoney(match.montoVuelta)}`;
     const matchBlock = el(`
-      <div style="margin-bottom:14px;border-bottom:1px solid var(--linea);padding-bottom:12px">
-        <div class="match-row" style="border-bottom:none;padding-bottom:6px">
-          <span class="match-row__names">${nombreA}<span class="match-row__vs">vs</span>${nombreB}</span>
-          <span class="match-row__amount ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
-        </div>
+      <div class="partido ${abierto ? "abierto" : ""}">
+        <button class="partido__fila" data-role="match-toggle" aria-expanded="${abierto}">
+          <span class="partido__nombres">${nombreA}<span class="match-row__vs">vs</span>${nombreB}</span>
+          <span class="partido__montos">${montosTxt}</span>
+          <span class="partido__saldo ${moneyClass(r.saldoA)}">${r.holesCounted === 0 ? "—" : fmtMoney(Math.abs(r.saldoA))}</span>
+          <span class="partido__flecha" aria-hidden="true">›</span>
+        </button>
+        <div class="partido__detalle" ${abierto ? "" : "hidden"}>
         ${marcadorHoyos}
         <div class="field" style="margin-bottom:6px">
           <label>Modo de juego</label>
@@ -1475,8 +1490,17 @@ function renderBetsScreen(state, onChange) {
         </div>
         ` : ""}
         <button class="btn btn-ghost btn-small" data-role="match-delete" style="width:100%">Eliminar partido</button>
+        </div>
       </div>
     `);
+    matchBlock.querySelector('[data-role="match-toggle"]').addEventListener("click", () => {
+      const abrir = !partidosAbiertos.has(claveP);
+      if (abrir) partidosAbiertos.add(claveP);
+      else partidosAbiertos.delete(claveP);
+      matchBlock.classList.toggle("abierto", abrir);
+      matchBlock.querySelector('[data-role="match-toggle"]').setAttribute("aria-expanded", abrir);
+      matchBlock.querySelector(".partido__detalle").hidden = !abrir;
+    });
     matchBlock.querySelector('[data-role="match-modo"]').addEventListener("change", (e) => {
       match.modo = e.target.value;
       onChange(state);
@@ -1556,6 +1580,7 @@ function renderBetsScreen(state, onChange) {
       return;
     }
     state.bets.individuales.matches.push({ a, b, montoIda, montoVuelta, ventajaManual: null, modo: "normal", montoMatch: 0 });
+    partidosAbiertos.add(`${a}-${b}`); // el partido nuevo sale abierto
     onChange(state);
   });
   wrap.appendChild(indCard);
@@ -1605,8 +1630,8 @@ function renderBetsScreen(state, onChange) {
       jugadoresDeHoy(state).forEach((p) => {
         const checked = state.bets.foursome.participantes.includes(p.id);
         const row = el(`
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
-            <input type="checkbox" data-fs-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+          <label class="chip-check">
+            <input type="checkbox" data-fs-part="${p.id}" ${checked ? "checked" : ""} />
             <span>${p.name}</span>
           </label>
         `);
@@ -1681,8 +1706,8 @@ function renderBetsScreen(state, onChange) {
       jugadoresDeHoy(state).forEach((p) => {
         const checked = state.bets.foursome.participantes4.includes(p.id);
         const row = el(`
-          <label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer">
-            <input type="checkbox" data-rot-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+          <label class="chip-check">
+            <input type="checkbox" data-rot-part="${p.id}" ${checked ? "checked" : ""} />
             <span>${p.name}</span>
           </label>
         `);
@@ -1885,8 +1910,8 @@ function renderBetsScreen(state, onChange) {
   jugadoresDeHoy(state).forEach((p) => {
     const checked = state.bets.skins.participantes.includes(p.id);
     const row = el(`
-      <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
-        <input type="checkbox" data-skins-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+      <label class="chip-check">
+        <input type="checkbox" data-skins-part="${p.id}" ${checked ? "checked" : ""} />
         <span>${p.name}</span>
       </label>
     `);
@@ -2003,8 +2028,8 @@ function renderBetsScreen(state, onChange) {
     jugadoresDeHoy(state).forEach((p) => {
       const checked = state.bets.stableford.participantes.includes(p.id);
       const row = el(`
-        <label style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer">
-          <input type="checkbox" data-sf-part="${p.id}" ${checked ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0" />
+        <label class="chip-check">
+          <input type="checkbox" data-sf-part="${p.id}" ${checked ? "checked" : ""} />
           <span>${p.name}</span>
         </label>
       `);
@@ -2072,10 +2097,10 @@ function renderBetsScreen(state, onChange) {
     jugadoresDeHoy(state).forEach((p) => {
       const checked = state.bets[betKey].participantes.includes(p.id);
       const row = el(`
-        <div class="checkbox-row">
+        <label class="chip-check">
           <input type="checkbox" ${checked ? "checked" : ""} data-player-id="${p.id}" />
           <span>${p.name}</span>
-        </div>
+        </label>
       `);
       row.querySelector("input").addEventListener("change", (e) => {
         const list = state.bets[betKey].participantes;
@@ -2593,8 +2618,13 @@ function renderSummaryScreen(state, onChange) {
     if (state.bets.threePutt.enabled) filas.push(["3-putt", tp]);
     if (state.bets.chupes.enabled) filas.push(["Chupes", chu]);
 
-    const filasHtml = filas.map(([label, val], i) => `
-      <div class="match-row" style="padding:6px 0;${i === filas.length - 1 ? "border-bottom:none" : ""}">
+    // Solo las apuestas donde ganó o perdió algo: los renglones en $0 no
+    // aportan nada y alargan el desglose.
+    const conMovimiento = filas.filter(([, val]) => val !== 0);
+    const filasHtml = conMovimiento.length === 0
+      ? `<p class="help-text" style="margin:0">Sin movimiento todavía.</p>`
+      : conMovimiento.map(([label, val], i) => `
+      <div class="match-row" style="padding:6px 0;${i === conMovimiento.length - 1 ? "border-bottom:none" : ""}">
         <span class="match-row__names" style="font-size:15px;opacity:0.75">${label}</span>
         <span class="match-row__amount ${moneyClass(val)}" style="font-size:16px;font-weight:600">${fmtMoney(val)}</span>
       </div>

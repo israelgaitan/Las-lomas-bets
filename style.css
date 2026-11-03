@@ -1255,3 +1255,110 @@ input.stepper__value.hcp-base {
   font-size: 9px;
   color: var(--dorado);
 }
+
+/* ---------------- APUESTAS: QUIÉN JUEGA (botones con nombre) ---------------- */
+
+/* Mismo look que los chips de "Nueva ronda". La casilla real queda oculta
+   pero sigue funcionando (el label la marca al tocar el nombre). */
+.chip-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 14px;
+  margin: 0 6px 8px 0;
+  vertical-align: top;
+  border-radius: 22px;
+  background: rgba(244, 239, 227, 0.08);
+  border: 1px solid var(--linea);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.chip-check input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.chip-check:has(input:checked) {
+  background: var(--terracota);
+  border-color: var(--terracota);
+  color: var(--crema);
+}
+
+.chip-check:has(input:checked)::before {
+  content: "✓";
+  font-weight: 700;
+}
+
+.chip-check:has(input:focus-visible) {
+  outline: 2px solid var(--dorado);
+  outline-offset: 2px;
+}
+
+/* ---------------- APUESTAS: PARTIDO EN UNA LÍNEA ---------------- */
+
+.partido {
+  border-bottom: 1px solid var(--linea);
+}
+
+.partido__fila {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 0;
+  text-align: left;
+}
+
+.partido__nombres {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.partido__montos {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--crema-suave);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.partido__saldo {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 56px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.partido__flecha {
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: transform 0.15s;
+}
+
+.partido.abierto .partido__flecha {
+  transform: rotate(90deg);
+}
+
+.partido__detalle {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  padding: 12px 12px 8px;
+  margin: 0 -6px 12px;
+}
