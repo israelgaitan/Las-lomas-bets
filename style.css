@@ -12,7 +12,7 @@
   --crema-suave: #E8E0CC;
   --terracota: #C4622D;
   --terracota-oscuro: #A04E22;
-  --rojo-apuesta: #A8332A;
+  --rojo-apuesta: #FF8A7A; /* coral claro: contraste 6.6:1 sobre el verde, igual que --verde-ganancia */
   --dorado: #D4A540;
   --verde-ganancia: #8FBC6A;
   --linea: rgba(244, 239, 227, 0.14);
