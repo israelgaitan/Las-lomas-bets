@@ -824,7 +824,7 @@ function registrarCambioDeHoyo(state, h, onChange, aplicar) {
 }
 
 function renderHoleScreen(state, onChange) {
-  const wrap = el(`<div></div>`);
+  const wrap = el(`<div class="screen-hoyo"></div>`);
   const h = state.round.currentHole - 1; // índice 0-based
   const course = getActiveCourse(state);
   const par = course.par[h];
@@ -1374,7 +1374,7 @@ function renderHoleScreen(state, onChange) {
 const partidosAbiertos = new Set();
 
 function renderBetsScreen(state, onChange) {
-  const wrap = el(`<div></div>`);
+  const wrap = el(`<div class="screen-apuestas"></div>`);
   const resumen = calcResumenGeneral(state);
 
   /* ---- INDIVIDUALES ---- */
