@@ -1776,6 +1776,22 @@ function renderBetsScreen(state, onChange) {
           segCard.appendChild(el(`<p class="help-text" style="margin:10px 0 0">Arrancando por el 10.</p>`));
         }
         wrap.appendChild(segCard);
+
+        const empOn = !!state.bets.foursome.empateDoble;
+        const empateBtn = el(`
+          <button class="toggle-row" style="margin-top:10px">
+            <span>
+              <span class="toggle-row__title">Empate vale doble</span>
+              <span class="toggle-row__sub">Si empatan un hoyo, el siguiente vale doble. Birdies y extras siguen valiendo 1.</span>
+            </span>
+            <span class="switch ${empOn ? "on" : ""}"></span>
+          </button>
+        `);
+        empateBtn.addEventListener("click", () => {
+          state.bets.foursome.empateDoble = !state.bets.foursome.empateDoble;
+          onChange(state);
+        });
+        wrap.appendChild(empateBtn);
       }
     }
   }

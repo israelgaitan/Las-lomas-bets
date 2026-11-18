@@ -311,7 +311,7 @@ function generarSegmentosRotacion(participantes, segmentosViejos, hoyoInicial, r
  * de SU PROPIO orden de juego (no por número de hoyo físico), igual que
  * ya hace el resto de la app con hoyoInicial=10.
  */
-function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, oyesOrden, metidas, contarEventos) {
+function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, oyesOrden, metidas, contarEventos, empateDoble) {
   const holeResults = [];
   let saldoTotal = 0;
   const usaIdaVuelta = segmento.montoIda !== undefined && segmento.montoVuelta !== undefined;
@@ -367,8 +367,13 @@ function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, 
     if (oyesGanador === "base") unidadesBase += 1;
     else if (oyesGanador === "rival") unidadesRival += 1;
 
-    const diffUnidades = unidadesBase - unidadesRival;
-    saldoTotal += diffUnidades * montoHoyo;
+    // puntos de bola (alta + baja) por separado de los extras (birdie,
+    // águila, sandy, oyes, metida), porque con "empate vale doble" solo
+    // las bolas se multiplican; los extras siempre valen 1 unidad fija.
+    const bolasBase = (resultBaja === "base" ? 1 : 0) + (resultAlta === "base" ? 1 : 0);
+    const bolasRival = (resultBaja === "rival" ? 1 : 0) + (resultAlta === "rival" ? 1 : 0);
+    const diffBolas = bolasBase - bolasRival;
+    const diffExtras = (unidadesBase - bolasBase) - (unidadesRival - bolasRival);
 
     holeResults.push({
       hole: h + 1,
@@ -380,10 +385,29 @@ function calcForusomeSegmento(segmento, brutos, ventajasSegmento, par, sandies, 
       montoHoyo,
       unidadesBase,
       unidadesRival,
-      diffUnidades,
+      diffBolas,
+      diffExtras,
+      diffUnidades: diffBolas + diffExtras,
+      valeBolas: 1,
       oyesGanador,
     });
   }
+
+  // Empate vale doble (opcional, lo prende el usuario): si un hoyo se
+  // empata en bolas (nadie gana más bolas que el otro), el siguiente hoyo
+  // de ESTE segmento vale una vez más. Se arrastra como en la loba: 2
+  // empates seguidos = el siguiente vale x3. Se recorre en orden de juego
+  // y se corta al terminar el segmento (en Round Robin no pasa de un
+  // bloque de 6 hoyos al siguiente, porque cambian las parejas).
+  let arrastre = 0;
+  segmento.hoyos.forEach((h) => {
+    const r = holeResults[h];
+    if (!r || !r.jugado) return;
+    r.valeBolas = empateDoble ? 1 + arrastre : 1;
+    r.diffUnidades = r.diffBolas * r.valeBolas + r.diffExtras;
+    saldoTotal += r.diffUnidades * r.montoHoyo;
+    if (empateDoble) arrastre = r.diffBolas === 0 ? arrastre + 1 : 0;
+  });
 
   const totalUnidades = holeResults.reduce((sum, r) => sum + (r.diffUnidades || 0), 0);
 
@@ -1376,7 +1400,7 @@ function calcResumenGeneral(state) {
         const ventajas4 = calcVentajasForusome(jugadores4, siEfectivo, bets.foursome.segmentos);
         const segmentosActivos = formatoFoursome === "normal" ? bets.foursome.segmentos.slice(0, 1) : bets.foursome.segmentos;
         foursomeResults = segmentosActivos.map((seg) =>
-          calcForusomeSegmento(seg, scores, ventajas4[seg.id], course.par, state.sandies, state.oyesOrden, state.metidas, true)
+          calcForusomeSegmento(seg, scores, ventajas4[seg.id], course.par, state.sandies, state.oyesOrden, state.metidas, true, !!bets.foursome.empateDoble)
         );
       }
     }
